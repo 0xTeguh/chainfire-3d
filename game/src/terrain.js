@@ -254,8 +254,15 @@ export function buildTerrain(scene, rng) {
     // swath) + ember flecks, max ~50% lerp in the worst patch — BRIGHT
     // identity stays, ground stays inside Mark's 35% texture budget. The
     // band sits BETWEEN lanes, never on a road (roads are on the lanes).
-    const inScorchSouth = z >= 4 && z <= 10 && x >= 29 && x <= 33;
-    const inScorchNorth = z >= -10 && z <= -4 && x >= 30.5 && x <= 33;
+    // ROUND 5 AGENT C (full mid-field fill, Mark 01:37 WIB): the R5B
+    // band was confined to x >= 29 / 30.5 so title/draft/results stayed
+    // byte-identical — that rule is now RELAXED (parent's decision), so
+    // the band extends west to x >= 2 across the whole mid-field. Same
+    // patchy recipe (noise mask, never a solid swath; max ~50% lerp), same
+    // gaps (never on a road — roads are on the lanes). The band now reads
+    // in the title/draft/results backdrops too; that is intended.
+    const inScorchSouth = z >= 4 && z <= 10 && x >= 2 && x <= 33;
+    const inScorchNorth = z >= -10 && z <= -4 && x >= 2 && x <= 33;
     if (inScorchSouth || inScorchNorth) {
       const scorchMask = smoothNoise(x * 0.5, z * 0.5, 99);
       if (scorchMask > 0.5) {
@@ -887,6 +894,18 @@ export function buildTerrain(scene, rng) {
   // R5B fix: C1 moved 27 -> 29 (the 27 centre's rock western edge at
   // x 25.1 grazed the draft frame's right edge — same 33-pixel leak as
   // the scorch band; 2u east clears it with margin).
+  // ROUND 5 AGENT C (full mid-field fill, Mark 01:37 WIB): the byte-
+  // identical rule for title/draft/results is RELAXED (parent's decision)
+  // — these 4 clusters fill the LEFT-CENTRE gaps, so they WILL appear in
+  // the title/draft/results backdrops (intended). Same placement rules as
+  // R5B: every prop >= 4.5u from a lane centre (trail + enemy path stay
+  // clear), >= 5u from a keg spot (freeze kegs (2.1,-17.2), (25.8,3.4),
+  // (-10.7,12.4) — closest new prop is > 10u away), all props <= ~1.6u
+  // tall (low — they never occlude the trail, the beams, or the Titan).
+  // Fixed literal coordinates: no rng drawn here, so the seeded layout of
+  // everything else is untouched. C6 (12,7) + C9 (2,7) south gap; C7
+  // (18,-7) + C8 (6,-7) north gap. C10 was dropped: (22,-7.5) sits 2u
+  // from C7 — one cluster, not two.
   const clusterProps = [
     ['rock', 29, 7, -0.8, 0.4, 1.1, 0.6],
     ['stump', 29, 7, 0.7, -0.5, 1.0, 0],
@@ -902,7 +921,21 @@ export function buildTerrain(scene, rng) {
     ['rock', 20, 22, 0.6, -0.5, 1.0, 1.5],
     ['stump', 20, 22, 0.1, 0.9, 0.9, 0],
     ['rock', 28, 21, -0.4, -0.3, 1.1, 0.2],
-    ['bush', 28, 21, 0.7, 0.5, 1.2, 2.6]
+    ['bush', 28, 21, 0.7, 0.5, 1.2, 2.6],
+    // R5C: left-centre fill (see the note above the array).
+    ['rock', 12, 7, -0.8, 0.4, 1.1, 0.6],
+    ['stump', 12, 7, 0.7, -0.5, 1.0, 0],
+    ['bush', 12, 7, 0.2, 0.9, 1.3, 1.2],
+    ['keg', 12, 7, 1.1, 0.6, 0.9, 0.4],
+    ['rock', 18, -7, 0.7, 0.5, 1.2, 2.4],
+    ['stump', 18, -7, -0.6, -0.6, 1.1, 0],
+    ['bush', 18, -7, -0.1, 0.8, 1.2, 2.0],
+    ['bush', 6, -7, -0.7, 0.3, 1.4, 0.8],
+    ['rock', 6, -7, 0.6, -0.5, 1.0, 1.5],
+    ['stump', 6, -7, 0.1, 0.9, 0.9, 0],
+    ['rock', 2, 7, -0.5, 0.3, 1.0, 1.1],
+    ['bush', 2, 7, 0.6, -0.4, 1.2, 0.5],
+    ['stump', 2, 7, 0.1, 0.8, 0.9, 0]
   ];
   for (const [type, cx, cz, dx, dz, sc, ry] of clusterProps) {
     const px = cx + dx;
@@ -936,14 +969,24 @@ export function buildTerrain(scene, rng) {
   // R5B: ember flecks — tiny glowing shards scattered in the scorch band
   // (same rects as the vertex-colour scorch above). Dedicated rng stream
   // so the main seeded layout is untouched.
+  // R5C: 48 -> 96 shards. The first 48 draws are IDENTICAL to R5B (same
+  // ranges, same call order), so the first 48 shards are pixel-identical;
+  // the next 48 fill the extended band (x 2..28 south, x 2..30 north).
   const fleckRng = mulberry32(20261117 + 771);
   const fleckGeo = new THREE.ConeGeometry(0.17, 0.32, 4);
   const fleckMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 2.5, roughness: 0.6, flatShading: true });
-  const flecks = new THREE.InstancedMesh(fleckGeo, fleckMat, 48);
-  for (let i = 0; i < 48; i += 1) {
+  const flecks = new THREE.InstancedMesh(fleckGeo, fleckMat, 96);
+  for (let i = 0; i < 96; i += 1) {
     const south = i % 2 === 0;
-    const fx = south ? range(fleckRng, 29, 33) : range(fleckRng, 30.5, 33);
-    const fz = south ? range(fleckRng, 4, 10) : range(fleckRng, -10, -4);
+    let fx;
+    let fz;
+    if (i < 48) {
+      fx = south ? range(fleckRng, 29, 33) : range(fleckRng, 30.5, 33);
+      fz = south ? range(fleckRng, 4, 10) : range(fleckRng, -10, -4);
+    } else {
+      fx = south ? range(fleckRng, 2, 28) : range(fleckRng, 2, 30);
+      fz = south ? range(fleckRng, 4, 10) : range(fleckRng, -10, -4);
+    }
     dummy.position.set(fx, terrainHeight(fx, fz) + 0.1, fz);
     dummy.rotation.set(range(fleckRng, -0.4, 0.4), fleckRng() * Math.PI, range(fleckRng, -0.4, 0.4));
     dummy.scale.setScalar(range(fleckRng, 0.7, 1.3));

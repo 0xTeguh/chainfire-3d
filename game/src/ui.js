@@ -202,6 +202,31 @@ export class UI {
     // bark hides with it (no win-bark over the results screen).
     this.barkLine = el('div', 'bark', '');
     bar.append(this.barkLine);
+    // ROUND 5 AGENT C (item #7): minimap — a live schematic of the field
+    // (fort, trail, enemies, Titan), drawn from world state every frame
+    // by _updateMinimap(). A canvas inside #bottom, bottom-right above
+    // the ctl-box, so it hides with the chrome on screens. Deterministic:
+    // a pure function of world state (no rng, no clock) — the frozen
+    // shot is byte-identical across runs.
+    this.minimapWrap = el('div', 'minimap-wrap');
+    this.minimapLabel = el('div', 'minimap-label', 'MAP');
+    this.minimap = document.createElement('canvas');
+    this.minimap.width = 150;
+    this.minimap.height = 104;
+    this.minimapWrap.append(this.minimapLabel, this.minimap);
+    bar.append(this.minimapWrap);
+    // ROUND 5 AGENT C (item #8): 10-wave journey strip — waves 1-10, the
+    // run's journey at a glance. Centred above LIGHT FUSE, inside #bottom.
+    // Segments are numbered; done waves green, the current wave gold.
+    this.waveStrip = el('div', 'wave-strip');
+    this.waveStrip.append(el('span', 'wave-strip-label', 'WAVES'));
+    this.waveSegs = [];
+    for (let i = 1; i <= 10; i += 1) {
+      const seg = el('div', 'wave-seg', String(i));
+      this.waveStrip.append(seg);
+      this.waveSegs.push(seg);
+    }
+    bar.append(this.waveStrip);
   }
 
   _setText(node, key, value) {
@@ -296,11 +321,95 @@ export class UI {
     // ROUND 3 AGENT D (item 4): threat-queue panel — live counts, grouped
     // by type (queue order preserved for the NEXT group).
     this._updateThreatPanel(world);
+    // ROUND 5 AGENT C (items #7 + #8): minimap + wave journey strip.
+    this._updateMinimap(world);
+    this._updateWaveStrip(world);
     // ROUND 3 AGENT D (item 1): big moment text on sim-state transitions.
     this.updateEventBanner(world);
     if (this.barkTimer > 0) {
       this.barkTimer -= 1 / 60;
       if (this.barkTimer <= 0) this.barkLine.textContent = '';
+    }
+  }
+
+  // ROUND 5 AGENT C (item #7): minimap draw. Pure function of world
+  // state: field + lanes + burning trail + fort + defenders + enemies +
+  // Titan + kegs, all mapped from world coords (x -45..60, z -20..20)
+  // to the 150x104 canvas. No rng, no clock — deterministic at the
+  // freeze. Redrawn every rAF frame from the live world; cheap (one
+  // small canvas, a handful of dots).
+  _updateMinimap(world) {
+    const cv = this.minimap;
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const W = cv.width;
+    const H = cv.height;
+    const px = (x) => 4 + ((x + 45) / 105) * (W - 8);
+    const pz = (z) => 4 + ((z + 20) / 40) * (H - 8);
+    ctx.fillStyle = '#2a4a22';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(245,230,200,0.25)';
+    ctx.lineWidth = 1;
+    for (const z of [-14.5, 0, 14.5]) {
+      ctx.beginPath();
+      ctx.moveTo(px(-45), pz(z));
+      ctx.lineTo(px(60), pz(z));
+      ctx.stroke();
+    }
+    if (world.trail && world.trail.state === 'burning') {
+      ctx.strokeStyle = '#ff7a1a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px(-42.7), pz(world.trail.frontZ));
+      ctx.lineTo(px(world.trail.frontX), pz(world.trail.frontZ));
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ffc53d';
+    ctx.fillRect(px(-44) - 2, 4, 4, H - 8);
+    ctx.fillStyle = '#4ac8ff';
+    for (const d of world.defenders || []) {
+      if (typeof d.z !== 'number') continue;
+      ctx.beginPath();
+      ctx.arc(px(-42.7), pz(d.z), 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const e of world.enemies || []) {
+      if (e.dead || typeof e.x !== 'number' || typeof e.z !== 'number') continue;
+      ctx.fillStyle = e.type === 'ironhide' ? '#ff4d3d' : '#ff8a5c';
+      ctx.beginPath();
+      ctx.arc(px(e.x), pz(e.z), e.type === 'ironhide' ? 3 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (world.boss && world.boss.alive && typeof world.boss.x === 'number') {
+      ctx.fillStyle = '#ff7a1a';
+      ctx.beginPath();
+      ctx.arc(px(world.boss.x), pz(world.boss.z), 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd23f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(px(world.boss.x), pz(world.boss.z), 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#b8a080';
+    for (const k of world.kegs || []) {
+      if (!k.alive || typeof k.x !== 'number' || typeof k.z !== 'number') continue;
+      ctx.beginPath();
+      ctx.arc(px(k.x), pz(k.z), 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ROUND 5 AGENT C (item #8): wave journey strip — waves < current are
+  // done (green), the current wave is gold, future waves stay dim.
+  // Class toggles only; the segment numbers never change.
+  _updateWaveStrip(world) {
+    if (!this.waveSegs) return;
+    for (let i = 0; i < 10; i += 1) {
+      const seg = this.waveSegs[i];
+      const w = i + 1;
+      seg.classList.toggle('done', w < world.wave);
+      seg.classList.toggle('current', w === world.wave);
     }
   }
 

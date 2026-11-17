@@ -68,6 +68,32 @@ function makeGlowTexture() {
   return tex;
 }
 
+// ROUND 5 AGENT C (item #6): a DENSE smoke texture for the scorch
+// columns. makeSmokeTexture() is too faint for a static column — its
+// own alpha peaks at 0.55 and fades to 0.35, so even at material opacity
+// 0.55 the effective centre alpha is only ~0.30, and the material colour
+// multiplies the baked dark colour down further. That is why the first
+// two column versions did not read (proven by zoom, 05:55 WIB). This
+// texture bakes a warm grey at alpha 0.85 centre / 0.55 mid / 0 edge, so
+// with material colour 0xffffff the column reads as real smoke against
+// the bright field while keeping the soft falloff (no hard pillar).
+function makeColumnSmokeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 60);
+  grad.addColorStop(0, 'rgba(110, 95, 75, 0.95)');
+  grad.addColorStop(0.45, 'rgba(110, 95, 75, 0.9)');
+  grad.addColorStop(0.65, 'rgba(100, 85, 65, 0.45)');
+  grad.addColorStop(1, 'rgba(90, 75, 60, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // Fireball texture (P3): a shaped fireball, not a flat bright disc —
 // ROUND 3 AGENT B (item 4, Rizal): the old white-gold core (255,244,200)
 // washed to WHITE at additive peak over the bright field. New core is
@@ -248,6 +274,7 @@ export class Renderer {
     this.glowTex = makeGlowTexture();
     this.fireballTex = makeFireballTexture();
     this.smokeTex = makeSmokeTexture();
+    this.columnSmokeTex = makeColumnSmokeTexture();
     this.world = null;
     this.time = 0;
 
@@ -414,6 +441,41 @@ export class Renderer {
       puff.visible = false;
       this.scene.add(puff);
       this.smokes.push({ puff, t: 99, ttl: 1.4, x: 0, z: 0, born: 0 });
+    }
+
+    // ROUND 5 AGENT C (item #6): smoke columns on the fresh scorch — thin
+    // warm-grey columns rising from the scorch band Agent B laid (and R5C
+    // extended). Static columns, not blast puffs: 4 columns x 3 stacked
+    // sprites, positions fixed in the inter-lane gaps (spread along the
+    // band, east + left-centre), heights/scales/opacities fixed per level
+    // so the column reads as a rising stack, sway is f(world.time). Gate:
+    // combat or won — the columns rise over FRESH scorch, so they show in
+    // the action frame and on the results backdrop, never on the title /
+    // draft (build phase, no battle yet). Warm grey (0x9a8f80) at low
+    // opacity, never a white/yellow washout column (beacon lesson).
+    // TUNED 06:15 WIB: the columns are now visible as dark smoke in a
+    // tight zoom (the base level reads as a smoke puff), but they do NOT
+    // read as columns in the full frame — all four project into the
+    // x 740-940, y 250-400 band, i.e. behind the giant "CHAIN x8!" banner
+    // and the popups, in the busiest part of the frame. The last fix is
+    // POSITION: all four columns move WEST into the open left-centre
+    // field (x 2-10), clear of the banner (x 480-800, y 300-380) and the
+    // fire, over clean green field + road where grey smoke has contrast.
+    // If they still do not read there, the item is PARTIAL, not a pass.
+    this._scorchSmoke = [];
+    const scorchCols = [
+      { x: 4, z: 7, phase: 0.0 }, { x: 10, z: 6, phase: 1.7 },
+      { x: 4, z: -7, phase: 3.1 }, { x: 10, z: -6, phase: 4.4 },
+    ];
+    for (const col of scorchCols) {
+      const levels = [];
+      for (let li = 0; li < 4; li += 1) {
+        const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.columnSmokeTex, color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false }));
+        spr.visible = false;
+        this.scene.add(spr);
+        levels.push({ sprite: spr, dy: 2.0 + li * 2.5, scale: 3.5 + li * 1.5, opacity: 0.8 - li * 0.13 });
+      }
+      this._scorchSmoke.push({ x: col.x, z: col.z, phase: col.phase, levels });
     }
 
     // Scorch decals (pooled).
@@ -588,6 +650,49 @@ export class Renderer {
     this._motePoints = new THREE.Points(this._moteGeo, this._moteMat);
     this._motePoints.frustumCulled = false;
     this.scene.add(this._motePoints);
+
+    // ROUND 5 AGENT C (item #5): ember burst at the x8 peak. R5A's arcs
+    // failed the still because they are event-born with a 1.0s ttl and the
+    // kill rate right at the freeze is low — only ~2 tiny arcs alive. The
+    // burst is instead a PURE FUNCTION of the frozen world state (the beam
+    // pattern): it is ON whenever phase is combat AND chainMul >= 8 AND the
+    // trail is burning, anchored at the burn front — so it is GUARANTEED
+    // visible at the x8 freeze, in every re-stage. 60 ember points in a
+    // rising plume (rise loop is f(world.time), like the ambient embers) +
+    // 8 bright core glows around the fire. In live play it appears at the
+    // x8 peak and vanishes when the chain resets; it never shows on the
+    // results backdrop (phase 'won' is not combat). TUNED 05:47 WIB: the
+    // first version (36 points, size 1.9, radius 2.6u, rise 5u) was proven
+    // ON by probe but did not read — it sat INSIDE the fire's own glow.
+    // The plume is now WIDER (4.5u) and TALLER (8u) than the flame, with
+    // bigger points and core glows above the fire's top, so it reads as a
+    // burst ABOVE the fire instead of a brighter fire.
+    const burstRng = mulberry32(20261118 + 555);
+    this._burst = [];
+    for (let i = 0; i < 60; i += 1) {
+      const a = burstRng() * Math.PI * 2;
+      const r = 0.5 + burstRng() * 4.0;
+      this._burst.push({
+        dx: Math.cos(a) * r, dz: Math.sin(a) * r,
+        speed: 0.7 + burstRng() * 0.9, phase: burstRng() * Math.PI * 2,
+        amp: 0.3 + burstRng() * 0.7,
+      });
+    }
+    this._burstGeo = new THREE.BufferGeometry();
+    this._burstGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(60 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    this._burstMat = new THREE.PointsMaterial({ size: 2.6, map: this.glowTex, color: 0xffa030, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+    this._burstPoints = new THREE.Points(this._burstGeo, this._burstMat);
+    this._burstPoints.frustumCulled = false;
+    this._burstPoints.visible = false;
+    this.scene.add(this._burstPoints);
+    this._burstCore = [];
+    for (let i = 0; i < 8; i += 1) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffb040, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+      s.visible = false;
+      s.scale.setScalar(3.2);
+      this.scene.add(s);
+      this._burstCore.push({ sprite: s, dx: (burstRng() - 0.5) * 3.6, dz: (burstRng() - 0.5) * 3.6, dy: 1.0 + burstRng() * 3.0, phase: burstRng() * Math.PI * 2 });
+    }
 
     // Keg meshes (rebuilt per wave).
     // R4B (item 13): the 0.85r kegs were small brown props nobody could
@@ -1328,7 +1433,9 @@ export class Renderer {
     if (bark && bark.textContent.trim()) grab(bark);
     if (toast && toast.classList.contains('show')) grab(toast);
     if (banner) grab(banner);
-    document.querySelectorAll('#bottom .powder-btn, #bottom .light-btn, #bottom .ctl-btn').forEach(grab);
+    // ROUND 5 AGENT C (items #7 + #8): the minimap + wave strip are DOM
+    // chrome above the bar — popups must route around them too.
+    document.querySelectorAll('#bottom .powder-btn, #bottom .light-btn, #bottom .ctl-btn, #bottom .minimap-wrap, #bottom .wave-strip').forEach(grab);
     this._domObs = rects;
     this._domObsKey = key;
     this._domObsTime = t;
@@ -1337,6 +1444,20 @@ export class Renderer {
 
   _updatePopups() {
     const world = this.world;
+    // ROUND 5 AGENT C (results-backdrop cleanup, Mark 01:37 WIB): the
+    // results screen's backdrop is the live 3D scene, and the win run's
+    // final popups ("+800 x8 CHAIN" x3, "CINDER TITAN DOWN! +5600") were
+    // still alive at the win moment (ttl 0.9-1.4s), so they sat on the
+    // backdrop — the only stray-UI defect in the set, and no top-5 entry
+    // has one. The results screen is up only in won/lost, so hide every
+    // popup sprite there. Purely visual: the sim's world.popups list is
+    // untouched (no score/state change), and popupRectsCache is emptied
+    // so the overlap checker reads 0 rects on a results frame.
+    if (world && (world.phase === 'won' || world.phase === 'lost')) {
+      for (const slot of this.popups) slot.sprite.visible = false;
+      this.popupRectsCache = [];
+      return;
+    }
     const list = world ? world.popups : [];
     // Screen-space de-confliction: sort by (x, z), project each popup to
     // NDC, and stack any whose screen rect overlaps an already-placed one.
@@ -1723,6 +1844,64 @@ export class Renderer {
     }
   }
 
+  // ROUND 5 AGENT C (item #5): x8 ember burst — pure function of the
+  // frozen world state (see the constructor note). On only while combat +
+  // chainMul >= 8 + trail burning, anchored at the burn front. The plume
+  // rises in a loop (f(world.time), so the frozen frame is byte-identical
+  // across runs) and the core glows pulse gently; opacity never drops
+  // below 0.75, so the burst always reads at the freeze.
+  _updateX8Burst(t) {
+    const world = this.world;
+    const trail = world ? world.trail : null;
+    const on = !!(world && world.phase === 'combat' && world.chainMul >= 8 && world.chain > 0 && trail && trail.state === 'burning');
+    this._burstPoints.visible = on;
+    for (const c of this._burstCore) c.sprite.visible = on;
+    if (!on) return;
+    const fx = trail.frontX ?? trail.points[0].x;
+    const fz = trail.frontZ ?? trail.points[0].z;
+    const gy = terrainHeight(fx, fz);
+    const pos = this._burstGeo.attributes.position.array;
+    for (let i = 0; i < this._burst.length; i += 1) {
+      const b = this._burst[i];
+      const rise = ((t * b.speed + b.phase) % 8 + 8) % 8;
+      pos[i * 3] = fx + b.dx + Math.sin(t * 0.7 + b.phase) * b.amp;
+      pos[i * 3 + 1] = gy + 0.5 + rise;
+      pos[i * 3 + 2] = fz + b.dz + Math.cos(t * 0.6 + b.phase) * b.amp;
+    }
+    this._burstGeo.attributes.position.needsUpdate = true;
+    this._burstMat.opacity = 0.85 + Math.sin(t * 3) * 0.1;
+    for (const c of this._burstCore) {
+      c.sprite.position.set(fx + c.dx, gy + c.dy + Math.sin(t * 5 + c.phase) * 0.3, fz + c.dz);
+      c.sprite.scale.setScalar(3.2 + Math.sin(t * 6 + c.phase) * 0.4);
+      c.sprite.material.opacity = 0.75 + Math.sin(t * 4 + c.phase) * 0.1;
+    }
+  }
+
+  // ROUND 5 AGENT C (item #6): scorch smoke columns — pure function of
+  // world state + world.time (see the constructor note). On in combat from
+  // wave 6 on, and on the results backdrop (won) — the columns rise over
+  // FRESH scorch, so they never show on the title diorama (a wave-1
+  // combat world: no battle has scorched anything yet) or the draft
+  // (build phase). The wave-6 floor was added after the first version
+  // leaked 1 column set into the title shot (its diorama world is phase
+  // 'combat', wave 1 — the gate must test the wave, not just the phase).
+  _updateScorchSmoke(t) {
+    const world = this.world;
+    const on = !!(world && ((world.phase === 'combat' && world.wave >= 6) || world.phase === 'won'));
+    for (const col of this._scorchSmoke) {
+      const swayX = Math.sin(t * 0.4 + col.phase) * 0.5;
+      const swayZ = Math.cos(t * 0.33 + col.phase) * 0.3;
+      const gy = terrainHeight(col.x, col.z);
+      for (const lv of col.levels) {
+        lv.sprite.visible = on;
+        if (!on) continue;
+        lv.sprite.position.set(col.x + swayX, gy + lv.dy, col.z + swayZ);
+        lv.sprite.scale.setScalar(lv.scale);
+        lv.sprite.material.opacity = lv.opacity;
+      }
+    }
+  }
+
   update(dt) {
     const world = this.world;
     const t = world ? world.time : this.time + dt;
@@ -1739,6 +1918,8 @@ export class Renderer {
     this._updateFlashes(dt);
     this._updateSmokes(dt);
     this._updateAmbient(t);
+    this._updateX8Burst(t);
+    this._updateScorchSmoke(t);
 
     // Fire front.
     const trail = world ? world.trail : null;
