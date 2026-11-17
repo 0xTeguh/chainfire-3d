@@ -299,8 +299,16 @@ export function buildCharacter(kind, opts = {}) {
   if (kind === 'ironhide') {
     // Wide tank: boxy steel armor, big shoulders, tower shield (separate
     // mesh), helmet with slit eyes, grey steel + red accent.
-    const steel = std(0x7a7d84, { rough: 0.55, metal: 0.45 });
-    const steelDark = std(0x4a4d52, { rough: 0.6, metal: 0.4 });
+    // R4B (item 9, Mark 00:51 WIB): the ironhide read as a dark box at
+    // action distance — and the two ironhides nearest the fire front have
+    // shieldBroken=true, so their tower shield DROPS to the ground and the
+    // bright rim frame (R3B) vanishes with it. Fixes that survive a broken
+    // shield: brighter steel overall + RED BACK accents (the action camera
+    // sees the ironhide's back: +x/+z side), a wider crest, and a brighter
+    // + thicker shield rim so the DROPPED shield still reads as a
+    // bright-edged slab on the ground.
+    const steel = std(0x9298a1, { rough: 0.55, metal: 0.45 });
+    const steelDark = std(0x61656e, { rough: 0.6, metal: 0.4 });
     const red = std(0xff4d3d, { rough: 0.7 });
     const redGlow = std(0xff4d3d, { emissive: 0xff2a00, ei: 1.6 });
 
@@ -316,6 +324,10 @@ export function buildCharacter(kind, opts = {}) {
     // Chest plate + red chest stripe (the accent colour).
     box(inner, 0.1 * s, 0.9 * s, 1.0 * s, steelDark, -0.5 * s, 1.62 * s, 0);
     box(inner, 0.06 * s, 0.14 * s, 1.02 * s, red, -0.54 * s, 1.9 * s, 0);
+    // R4B: red BACK stripe — mirror of the front stripe on the +x face,
+    // so the ironhide carries its red accent from the camera side too.
+    box(inner, 0.1 * s, 0.9 * s, 1.0 * s, steelDark, 0.5 * s, 1.62 * s, 0);
+    box(inner, 0.06 * s, 0.14 * s, 1.02 * s, red, 0.54 * s, 1.9 * s, 0);
     box(inner, 0.98 * s, 0.14 * s, 1.38 * s, steelDark, 0, 1.08 * s, 0);
     // Pauldrons.
     ball(inner, 0.42 * s, steel, 0, 2.2 * s, 0.72 * s);
@@ -342,18 +354,20 @@ export function buildCharacter(kind, opts = {}) {
     reg(shield);
     box(shield, 0.14 * s, 1.7 * s, 1.0 * s, steel, 0, 0, 0);
     box(shield, 0.06 * s, 1.5 * s, 0.22 * s, red, -0.09 * s, 0, 0);
-    ball(shield, 0.2 * s, red, -0.1 * s, 0, 0);
+    ball(shield, 0.26 * s, red, -0.1 * s, 0, 0);
     // ROUND 3 AGENT B (item 11, Rizal): the dark rim trim let ironhides
     // merge into the Titan's dark mass at 320px. Bright steel rim instead
     // — each ironhide carries a light outline that separates it from its
     // neighbours and from the boss.
-    const rimBright = std(0xb8bcc4, { rough: 0.4, metal: 0.6 });
-    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, rimBright, 0, 0.82 * s, 0);
-    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, rimBright, 0, -0.82 * s, 0);
+    // R4B: rim brighter (0xb8bcc4 -> 0xd8dce4) + thicker (0.16 -> 0.22), so
+    // it survives at action distance AND on the dropped shield.
+    const rimBright = std(0xd8dce4, { rough: 0.4, metal: 0.6 });
+    box(shield, 0.22 * s, 0.1 * s, 1.02 * s, rimBright, 0, 0.82 * s, 0);
+    box(shield, 0.22 * s, 0.1 * s, 1.02 * s, rimBright, 0, -0.82 * s, 0);
     // Vertical rim on both side edges too — a full light frame around the
     // shield, so the ironhide outline reads even inside a tight group.
-    box(shield, 0.16 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, 0.47 * s);
-    box(shield, 0.16 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, -0.47 * s);
+    box(shield, 0.22 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, 0.47 * s);
+    box(shield, 0.22 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, -0.47 * s);
     parts.shield = shield;
 
     head = piv(0, 2.5 * s, 0);
@@ -362,7 +376,9 @@ export function buildCharacter(kind, opts = {}) {
     // Red crest fin on top + spike (tallest point).
     // ROUND 3 AGENT B (item 11): crest taller so the ironhide silhouette
     // reads at 320px even inside a group.
-    box(head, 0.08 * s, 0.34 * s, 0.5 * s, red, 0, 0.4 * s, 0);
+    // R4B: crest WIDER too (0.08 -> 0.12 wide, 0.5 -> 0.62 long) — the
+    // crest is the ironhide's topmost silhouette and reads from behind.
+    box(head, 0.12 * s, 0.4 * s, 0.62 * s, red, 0, 0.4 * s, 0);
     cone(head, 0.12 * s, 0.42 * s, steelDark, 0, 0.55 * s, 0);
     // Slit eyes: glowing red.
     box(head, 0.03 * s, 0.05 * s, 0.16 * s, redGlow, -0.29 * s, 0.05 * s, 0.13 * s);

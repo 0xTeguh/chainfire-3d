@@ -602,6 +602,19 @@ export function buildTerrain(scene, rng) {
   const grassCount = 600; // 60 clusters x 10 blades (ITEM 1: dense tufts)
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   grass.userData.isGrass = true;
+  // R4B (item 15, Mark 00:51 WIB): the tufts repeat — every cluster is
+  // 10 identical 2.8u blades in a 1.6u disc at the same scale, so the
+  // pattern is visible on close inspection. Vary them WITHOUT touching
+  // the rng stream (same draw count per blade, so dry grass / clouds /
+  // birds keep their seeded layout): wider height range on the single
+  // scale draw (0.45-1.4, so a tuft mixes stubble with tall blades),
+  // blade width from a pure hash of (cluster, blade) — no rng consumed —
+  // wider spread (±1.3) and stronger lean (±0.28). Bright green base/tip
+  // and the 2.8u recipe are unchanged: still grass at 320px, never stains.
+  const hash01 = (a, b) => {
+    const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  };
   {
     let gi = 0;
     for (let ci = 0; ci < 60 && gi < grassCount; ci += 1) {
@@ -609,11 +622,12 @@ export function buildTerrain(scene, rng) {
       const cx = range(rng, patch.x0, patch.x1);
       const cz = range(rng, patch.z0, patch.z1);
       for (let b = 0; b < 10 && gi < grassCount; b += 1, gi += 1) {
-        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.8, 0.8)));
-        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.8, 0.8)));
+        const x = Math.max(-55, Math.min(55, cx + range(rng, -1.3, 1.3)));
+        const z = Math.max(-31, Math.min(31, cz + range(rng, -1.3, 1.3)));
         dummy.position.set(x, terrainHeight(x, z), z);
-        dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
-        dummy.scale.setScalar(range(rng, 0.9, 1.25));
+        dummy.rotation.set(range(rng, -0.28, 0.28), rng() * Math.PI, range(rng, -0.28, 0.28));
+        const w = 0.75 + 0.55 * hash01(ci, b);
+        dummy.scale.set(w, range(rng, 0.45, 1.4), w);
         dummy.updateMatrix();
         grass.setMatrixAt(gi, dummy.matrix);
         cTmp.setRGB(0.9 + rng() * 0.25, 0.95 + rng() * 0.25, 0.85 + rng() * 0.2);
@@ -739,7 +753,10 @@ export function buildTerrain(scene, rng) {
 
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xf5a623, fog: false })
+    // R4B (E2): the disc rendered PALE (almost white-moon) against the
+    // orange sky — 0xf5a623 is too light at full brightness. Deeper amber
+    // 0xef9b12 so the sun reads GOLD, not white, in every backdrop.
+    new THREE.MeshBasicMaterial({ color: 0xef9b12, fog: false })
   );
   // P10 (Rizal fix): the disc was at +x (120, 26, -60) — ~70° off-axis
   // from the title/action/draft cameras (all look toward -x), so no shot
@@ -772,6 +789,15 @@ export function buildTerrain(scene, rng) {
   // puffs, pale cream lit material + a soft mauve-grey shade material on
   // alternate puffs (shading, not flat colour), almost no emissive, so the
   // clouds read as soft shaded masses in a golden-hour sky.
+  // R4B (item 10, Mark 00:51 WIB): the top-LEFT of the action frame is
+  // flat orange sky — NO clouds ever show there. Root cause, measured:
+  // the action camera looks toward -x/-z with the frame's left side
+  // toward +z, but every cloud sat at z -80..-20 (frame-right) and y
+  // 34-52 (above the frame's top edge: the WC camera's top ray is only
+  // +4.6 deg above horizontal, so a cloud at y 44 needs >100u distance
+  // to be in frame). Fix: z range -80..+30 (some clouds now sit in the
+  // top-left sky) + y range 28-44 (low enough to enter the frame). Same
+  // rng draw count — the seeded layout of everything after is unchanged.
   const clouds = new THREE.Group();
   clouds.name = 'clouds';
   const cloudLitMat = new THREE.MeshStandardMaterial({ color: 0xffe9c4, roughness: 1, flatShading: false, transparent: true, opacity: 0.92, emissive: 0xffc98a, emissiveIntensity: 0.5 });
@@ -785,7 +811,7 @@ export function buildTerrain(scene, rng) {
       puff.scale.y = 0.55;
       cloud.add(puff);
     }
-    cloud.position.set(range(rng, -100, 120), range(rng, 34, 52), range(rng, -80, -20));
+    cloud.position.set(range(rng, -100, 120), range(rng, 28, 44), range(rng, -80, 30));
     cloud.userData.drift = range(rng, 0.3, 0.9);
     clouds.add(cloud);
   }

@@ -31,7 +31,7 @@ const POPUP_GRID_OFFSETS = (() => {
   list.sort((a, b) => a[2] - b[2]);
   return list;
 })();
-const FLASH_POOL = 8;
+const FLASH_POOL = 12; // R4B: 8 -> 12 — flashes now live 1.0s (below), so the pool must hold a full chain-second of booms without dropping one.
 const SCORCH_POOL = 40;
 const SMOKE_POOL = 12;
 
@@ -297,20 +297,37 @@ export class Renderer {
     // ROUND 3 AGENT B (item 4, Rizal): the old 9u glow @ 0.85 + light 26
     // washed a big yellow-white hole at the burn front. Smaller, deeper,
     // dimmer: the fire reads as a shaped warm flame, not a white column.
+    // ROUND 4 AGENT B (item 4, Mark 00:51 WIB: the explosion must be
+    // bigger than the "CHAIN x8!" banner, which dominates the frame while
+    // the fire at the trail front is a modest glow — and the freeze shows
+    // ZERO live flashes, so the fire front is the only fire guaranteed
+    // present). Bigger AND shaped, not brighter per-pixel: a tall flame
+    // cluster (main cone + 2 leaning tongues), a wider glow at a LOWER
+    // opacity (0.5, not 0.85), warm deep-gold colours throughout — the
+    // R3B washout lesson stands, so size grows and opacity does not.
     this.fireGroup = new THREE.Group();
     this.fireGroup.visible = false;
+    const flameMat = new THREE.MeshStandardMaterial({ color: 0xf06010, emissive: 0xe85000, emissiveIntensity: 2.6, transparent: true, opacity: 0.95 });
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(1.4, 3.4, 10),
-      new THREE.MeshStandardMaterial({ color: 0xf06010, emissive: 0xe85000, emissiveIntensity: 2.2, transparent: true, opacity: 0.95 })
+      new THREE.ConeGeometry(2.6, 6.0, 10),
+      flameMat
     );
-    flame.position.y = 1.7;
+    flame.position.y = 3.0;
     this.fireGroup.add(flame);
-    const fireGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff8a1a, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
-    fireGlow.scale.set(6.5, 6.5, 1);
-    fireGlow.position.y = 1.2;
+    const tongueL = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.6, 8), flameMat);
+    tongueL.position.set(-1.6, 1.8, 0.7);
+    tongueL.rotation.z = 0.38;
+    this.fireGroup.add(tongueL);
+    const tongueR = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.6, 8), flameMat);
+    tongueR.position.set(1.5, 1.8, -0.8);
+    tongueR.rotation.z = -0.34;
+    this.fireGroup.add(tongueR);
+    const fireGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff8a1a, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    fireGlow.scale.set(12, 12, 1);
+    fireGlow.position.y = 2.2;
     this.fireGroup.add(fireGlow);
-    this.fireLight = new THREE.PointLight(0xff8a2a, 16, 18, 1.5);
-    this.fireLight.position.y = 2;
+    this.fireLight = new THREE.PointLight(0xff8a2a, 24, 22, 1.5);
+    this.fireLight.position.y = 3;
     this.fireGroup.add(this.fireLight);
     this.scene.add(this.fireGroup);
 
@@ -498,10 +515,15 @@ export class Renderer {
     this.scene.add(this._motePoints);
 
     // Keg meshes (rebuilt per wave).
+    // R4B (item 13): the 0.85r kegs were small brown props nobody could
+    // read as a system. 1.1r x 1.55h (~1.3x) + BRASS bands (the dark bands
+    // vanished against the field) + a big lit glow, so a powder keg reads
+    // at action distance. Mesh size only — the sim's blast radius (8.2u
+    // from the keg centre) is untouched.
     this.kegMeshes = new Map();
-    this.kegGeo = new THREE.CylinderGeometry(0.85, 0.85, 1.2, 10);
+    this.kegGeo = new THREE.CylinderGeometry(1.1, 1.1, 1.55, 10);
     this.kegMat = new THREE.MeshStandardMaterial({ map: makeKegTextureSeeded(51), roughness: 0.9 });
-    this.kegBandMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.5, metalness: 0.6 });
+    this.kegBandMat = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.4, metalness: 0.6 });
     this.kegGlowMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff6a00, emissiveIntensity: 2 });
 
     this._dummy = new THREE.Object3D();
@@ -813,10 +835,15 @@ export class Renderer {
         // timing — the 04:45 title --twice MISMATCH, 18 bytes.)
         slot.born = (typeof evTime === 'number' ? evTime : this.time);
         slot.t = this.time - slot.born;
-        slot.ttl = 0.5;
+        // R4B (item 4): ttl 0.5 -> 1.0 + maxR 5 -> 8. The frozen action
+        // frame showed ZERO live flashes (all booms older than 0.5s at the
+        // freeze), so the chain's fireballs never survived into the shot.
+        // A 1.0s life keeps the most recent booms visible as big shaped
+        // fireballs; opacity still fades (1-f)*0.6, so no washout pile-up.
+        slot.ttl = 1.0;
         slot.x = x;
         slot.z = z;
-        slot.maxR = 5;
+        slot.maxR = 8;
         slot.flash.visible = true;
         slot.ring.visible = true;
         return;
@@ -854,8 +881,10 @@ export class Renderer {
       const f = Math.min(1, slot.t / slot.ttl);
       const y = terrainHeight(slot.x, slot.z) + 1 + f * 4;
       slot.puff.position.set(slot.x, y, slot.z);
-      slot.puff.scale.setScalar(2 + f * 4);
-      slot.puff.material.opacity = 0.38 * (1 - f);
+      // R4B (item 4): puffs 2+f*4 -> 2.5+f*5 — the smoke column should read
+      // as part of the big blast, not a faint wisp beside it.
+      slot.puff.scale.setScalar(2.5 + f * 5);
+      slot.puff.material.opacity = 0.42 * (1 - f);
     }
   }
 
@@ -932,25 +961,39 @@ export class Renderer {
         const body = new THREE.Mesh(this.kegGeo, this.kegMat);
         body.castShadow = true;
         mesh.add(body);
-        const band = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.07, 6, 14), this.kegBandMat);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.09, 6, 14), this.kegBandMat);
         band.rotation.x = Math.PI / 2;
-        band.position.y = 0.3;
+        band.position.y = 0.4;
         mesh.add(band);
-        const glow = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), this.kegGlowMat);
-        glow.position.y = 0.7;
+        const band2 = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.09, 6, 14), this.kegBandMat);
+        band2.rotation.x = Math.PI / 2;
+        band2.position.y = -0.4;
+        mesh.add(band2);
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), this.kegGlowMat);
+        glow.position.y = 0.95;
         glow.visible = false;
         mesh.add(glow);
         mesh.userData.glow = glow;
+        // R4B (item 13): a lit keg gets a big additive fuse-glow sprite on
+        // top of the sphere — the old 0.3u sphere was invisible at action
+        // distance, so "lit" never read. The sprite is the fuse fire.
+        const fuseGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff8a1a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+        fuseGlow.scale.set(3.2, 3.2, 1);
+        fuseGlow.position.y = 1.1;
+        mesh.add(fuseGlow);
+        mesh.userData.fuseGlow = fuseGlow;
         this.scene.add(mesh);
         this.kegMeshes.set(keg, mesh);
       }
       mesh.visible = keg.alive;
       if (keg.alive) {
-        mesh.position.set(keg.x, terrainHeight(keg.x, keg.z) + 0.6, keg.z);
+        mesh.position.set(keg.x, terrainHeight(keg.x, keg.z) + 0.78, keg.z);
         mesh.userData.glow.visible = keg.state === 'lit';
+        mesh.userData.fuseGlow.material.opacity = keg.state === 'lit' ? 0.85 : 0;
         if (keg.state === 'lit') {
           const s = 1 + Math.sin(this.time * 30) * 0.15;
           mesh.userData.glow.scale.setScalar(s);
+          mesh.userData.fuseGlow.scale.setScalar(3.2 * s);
         }
       }
     }
