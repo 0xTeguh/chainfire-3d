@@ -236,25 +236,34 @@ export class Renderer {
     // ~90-118 beside it, measured on the round-1 action shot). Shrunk
     // again: 16u pillar, core opacity 0.35, 8u glow, weaker light — a warm
     // gold column that reads at 320px without whiting out the subjects.
+    // ITEM 2 (Mark 18:18 WIB): the 16u pillar STILL reads as a burning
+    // white column — the eye sees "gosongin kanan frame" even though the
+    // near-white % halved. Root cause is not size alone: the CORE is
+    // near-white (0xfff2c0) and additive, so pillar + core + glow + light
+    // stack into white over the bright field. Fix: shorter + narrower
+    // pillar, core colour moved off white to warm amber, all opacities
+    // down, glow + light smaller — the beacon must read GOLD, not white.
+    // The x8 stays readable via the giant x8 numeral + ground glow +
+    // chain popups, which are untouched.
     this.beacon = new THREE.Group();
     this.beacon.visible = false;
     const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.8, 1.4, 16, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(0.6, 1.0, 10, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xf59e2c, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillar.position.y = 8;
+    pillar.position.y = 5;
     this.beacon.add(pillar);
     const pillarCore = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.35, 0.6, 16, 8, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(0.25, 0.4, 10, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd97a, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillarCore.position.y = 8;
+    pillarCore.position.y = 5;
     this.beacon.add(pillarCore);
-    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
-    beaconGlow.scale.set(8, 8, 1);
+    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+    beaconGlow.scale.set(5, 5, 1);
     beaconGlow.position.y = 2;
     this.beacon.add(beaconGlow);
-    this.beaconLight = new THREE.PointLight(0xffb347, 14, 18, 1.4);
+    this.beaconLight = new THREE.PointLight(0xffb347, 8, 14, 1.4);
     this.beaconLight.position.y = 6;
     this.beacon.add(this.beaconLight);
     this.scene.add(this.beacon);
