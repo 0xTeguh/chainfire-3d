@@ -492,6 +492,15 @@ export function buildTerrain(scene, rng) {
     dummy.position.set(x, terrainHeight(x, z), z);
     dummy.rotation.set(0, rng() * Math.PI, 0);
     dummy.scale.setScalar(range(rng, 0.8, 1.3));
+    // Grass cleanup (Mark 20:13 WIB — "coretan coklat" in the middle of the
+    // field): the near-side wheat patches (i % 3 !== 0) read as brown
+    // scratches at eagle distance. Bury them (y = -100) instead of deleting:
+    // every rng() call above stays, so the seeded layout of everything
+    // placed after (grass, flowers, clouds, birds) is unchanged, and the
+    // sway bases in render3d.js stay valid (a zero scale would break
+    // Matrix4.decompose). The far-side patch (i % 3 === 0) stays — it reads
+    // as a wheat field along the top lane.
+    if (i % 3 !== 0) dummy.position.y = -100;
     dummy.updateMatrix();
     wheat.setMatrixAt(i, dummy.matrix);
   }
@@ -592,6 +601,10 @@ export function buildTerrain(scene, rng) {
         dummy.position.set(x, terrainHeight(x, z), z);
         dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
         dummy.scale.setScalar(range(rng, 0.9, 1.25));
+        // Grass cleanup (Mark 20:13 WIB): sparse tan blades are the same
+        // brown-scratch read as the near-side wheat — bury all 60 (rng calls
+        // above preserved, sway bases stay valid; see wheat note above).
+        dummy.position.y = -100;
         dummy.updateMatrix();
         dryGrass.setMatrixAt(gi, dummy.matrix);
         cTmp.setRGB(0.9 + rng() * 0.2, 0.88 + rng() * 0.2, 0.8 + rng() * 0.2);
