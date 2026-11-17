@@ -57,9 +57,13 @@ export const PALETTE = {
 // BLACK = standard (black + crystal glint), NAPHTHA = gold shimmer (ground
 // fire pools), STAR = red-hot (biggest blasts). Colors are visual only.
 export const POWDER_TYPES = {
-  BLACK: { costPer12px: 1, burnSpeed: 38.2, blastRadius: 4.2, damage: 100, color: 0x3a3a3a, glow: 0xffd23f, label: 'BLACK' },
-  NAPHTHA: { costPer12px: 2, burnSpeed: 34.5, blastRadius: 4.2, damage: 100, dotDps: 20, dotSeconds: 2, color: 0xffb347, glow: 0xffc53d, label: 'NAPHTHA' },
-  STAR: { costPer12px: 3, burnSpeed: 41.8, blastRadius: 6.4, damage: 140, color: 0xe85d26, glow: 0xff7a1a, label: 'STAR' }
+  // ROUND 4 AGENT C (item 14): `effect` is the honest one-line effect shown
+  // on the powder button — real mechanics only (BLACK: baseline 100 dmg /
+  // 4.2 blast; NAPHTHA: 20 dps burn for 2s on top of the 100 dmg blast;
+  // STAR: 6.4 blast radius, 140 dmg).
+  BLACK: { costPer12px: 1, burnSpeed: 38.2, blastRadius: 4.2, damage: 100, color: 0x3a3a3a, glow: 0xffd23f, label: 'BLACK', effect: 'STANDARD' },
+  NAPHTHA: { costPer12px: 2, burnSpeed: 34.5, blastRadius: 4.2, damage: 100, dotDps: 20, dotSeconds: 2, color: 0xffb347, glow: 0xffc53d, label: 'NAPHTHA', effect: 'BURNS 2s' },
+  STAR: { costPer12px: 3, burnSpeed: 41.8, blastRadius: 6.4, damage: 140, color: 0xe85d26, glow: 0xff7a1a, label: 'STAR', effect: 'BIG BLAST 140' }
 };
 export const POWDER_ORDER = ['BLACK', 'NAPHTHA', 'STAR'];
 

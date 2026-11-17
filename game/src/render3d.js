@@ -1005,6 +1005,86 @@ export class Renderer {
     }
   }
 
+  // ROUND 4 AGENT C (item 7): popups are 3D sprites, but the HUD is DOM on
+  // top of the canvas (z-index 5) — a popup whose NDC rect falls under a
+  // chip, the boss bar, the threat panel, the bark, the toast, the banner
+  // or a bottom button renders BEHIND it ("+400 x4 CHAIN" read as
+  // "00x4 CHAIN" behind the boss bar; 7 popup-vs-DOM hits at the action
+  // freeze, proof-r4c/before-dom.json). So the placer treats the visible
+  // DOM chrome as obstacles: the stack + grid search route around them.
+  // The rects are cached and refreshed only when a deterministic key
+  // changes (viewport, banner/bark/toast text) or every 0.5 SIM-seconds
+  // (world.time — sim time, so the frozen screenshot stays byte-identical
+  // across runs; never wall-clock, or determinism would break).
+  _domObstacles() {
+    const world = this.world;
+    if (typeof document === 'undefined' || !world) return [];
+    const canvas = this.renderer && this.renderer.domElement;
+    const W = (canvas && canvas.clientWidth) || (typeof window !== 'undefined' ? window.innerWidth : 1280);
+    const H = (canvas && canvas.clientHeight) || (typeof window !== 'undefined' ? window.innerHeight : 720);
+    const banner = document.querySelector('.event-banner');
+    const bark = document.querySelector('.bark');
+    const toast = document.querySelector('#toast');
+    // ROUND 4 AGENT C (item 7, cache-poisoning fix): the old key only covered
+    // the banner/bark/toast TEXTS. The HUD chrome hides on title/draft/
+    // results screens (ui.setChrome sets #hud/#bottom style.display none),
+    // so a rect set computed while the HUD was hidden is EMPTY — and an
+    // empty array is truthy, so that poisoned [] was returned for the same
+    // key at the action freeze (sim time frozen => the 0.5s expiry can
+    // never fire there), leaving popups unblocked against the banner and
+    // the top chips (probe: 5 domHits, blockers []). The key now includes
+    // the chrome visibility (inline style.display, the exact setChrome
+    // signal — free to read, no layout) + the full HUD/bottom text (chip
+    // widths + threat-panel height both follow the text), so a hidden-
+    // chrome computation can never be reused for a visible-chrome frame.
+    // Belt and braces: a cached empty set is never trusted while the HUD
+    // is displayed — the chips are unconditional children of #hud, so an
+    // empty set with a visible HUD is always stale.
+    const hud = document.querySelector('#hud');
+    const bottom = document.querySelector('#bottom');
+    const hudDisplay = hud ? (hud.style.display || 'flex') : 'none';
+    const bottomDisplay = bottom ? (bottom.style.display || 'flex') : 'none';
+    const key = [W, H, hudDisplay, hud ? hud.textContent : '', bottomDisplay, bottom ? bottom.textContent : '',
+      banner ? banner.textContent : '',
+      bark ? bark.textContent : '',
+      toast && toast.classList.contains('show') ? toast.textContent : '',
+    ].join('|');
+    const t = world.time || 0;
+    if (this._domObs && this._domObsKey === key && t - this._domObsTime < 0.5) {
+      if (this._domObs.length === 0 && hudDisplay !== 'none') {
+        // Poisoned empty cache: fall through and recompute.
+      } else {
+        return this._domObs;
+      }
+    }
+    const rects = [];
+    const M = 6; // px margin so a popup never kisses a panel edge
+    const grab = (el) => {
+      if (!el) return;
+      if (getComputedStyle(el).display === 'none') return;
+      const b = el.getBoundingClientRect();
+      if (b.width <= 0 || b.height <= 0) return;
+      const l = Math.max(0, b.left - M);
+      const r = Math.min(W, b.right + M);
+      const tp = Math.max(0, b.top - M);
+      const bt = Math.min(H, b.bottom + M);
+      if (r <= l || bt <= tp) return;
+      rects.push({
+        left: (l / W) * 2 - 1, right: (r / W) * 2 - 1,
+        top: 1 - (tp / H) * 2, bottom: 1 - (bt / H) * 2,
+      });
+    };
+    document.querySelectorAll('#hud .hud-chip, #hud .hud-mult, .boss-bar, .threat-panel').forEach(grab);
+    if (bark && bark.textContent.trim()) grab(bark);
+    if (toast && toast.classList.contains('show')) grab(toast);
+    if (banner) grab(banner);
+    document.querySelectorAll('#bottom .powder-btn, #bottom .light-btn, #bottom .ctl-btn').forEach(grab);
+    this._domObs = rects;
+    this._domObsKey = key;
+    this._domObsTime = t;
+    return rects;
+  }
+
   _updatePopups() {
     const world = this.world;
     const list = world ? world.popups : [];
@@ -1028,6 +1108,11 @@ export class Renderer {
     const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
     const up = new THREE.Vector3().crossVectors(right, fwd);
     const placed = []; // NDC rects {left, right, top, bottom}
+    // ROUND 4 AGENT C (item 7): the stack + grid search must avoid the DOM
+    // chrome too, not just other popups. `blockers` starts as the DOM
+    // obstacle rects and grows with each placed popup; `placed` stays
+    // popup-only so popupRectsCache (the overlap checker) is unchanged.
+    const blockers = this._domObstacles().slice();
     for (let i = 0; i < this.popups.length; i += 1) {
       const slot = this.popups[i];
       const popup = sorted[i];
@@ -1083,12 +1168,12 @@ export class Renderer {
         const minY = -maxY;
         ndcX = Math.max(-maxX, Math.min(maxX, ndcX));
         ndcY = Math.max(minY, Math.min(maxY, ndcY));
-        // Stack above any overlapping placed rect (repeat until stable).
-        // The raise is capped at maxY so a popup never escapes the top
-        // of the frame.
+        // Stack above any overlapping placed rect or DOM obstacle (repeat
+        // until stable). The raise is capped at maxY so a popup never
+        // escapes the top of the frame.
         for (let pass = 0; pass < 3; pass += 1) {
           let raised = false;
-          for (const r of placed) {
+          for (const r of blockers) {
             if (ndcX + hw > r.left - 0.01 && ndcX - hw < r.right + 0.01
               && ndcY + hh > r.bottom - 0.01 && ndcY - hh < r.top + 0.01) {
               ndcY = Math.min(maxY, r.top + hh + 0.02);
@@ -1106,7 +1191,7 @@ export class Renderer {
         // onto the top row. The old horizontal nudge (4 attempts) could
         // not clear a saturated column; the grid search covers the whole
         // frame (288 candidates) and the overlap checker proves it.
-        const overlapsPlaced = () => placed.some((r) => ndcX + hw > r.left - 0.01 && ndcX - hw < r.right + 0.01
+        const overlapsPlaced = () => blockers.some((r) => ndcX + hw > r.left - 0.01 && ndcX - hw < r.right + 0.01
           && ndcY + hh > r.bottom - 0.01 && ndcY - hh < r.top + 0.01);
         if (overlapsPlaced()) {
           const baseX = ndcX;
@@ -1128,7 +1213,9 @@ export class Renderer {
         const px = this.camPos.x + fwd.x * zc + right.x * nx + up.x * ny;
         const py = this.camPos.y + fwd.y * zc + right.y * nx + up.y * ny;
         const pz = this.camPos.z + fwd.z * zc + right.z * nx + up.z * ny;
-        placed.push({ left: ndcX - hw, right: ndcX + hw, top: ndcY + hh, bottom: ndcY - hh, text: popup.text });
+        const rect = { left: ndcX - hw, right: ndcX + hw, top: ndcY + hh, bottom: ndcY - hh, text: popup.text };
+        placed.push(rect);
+        blockers.push(rect);
         slot.sprite.position.set(px, py, pz);
         slot.sprite.scale.set(9 * scale * spriteShrink, 2.25 * scale * spriteShrink, 1);
       }

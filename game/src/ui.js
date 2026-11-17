@@ -140,8 +140,7 @@ export class UI {
     this.hudFuse = el('div', 'hud-chip hud-fuse', 'FUSE: READY');
     right.append(this.hudWall, this.hudPowder, this.hudCoins, this.hudFuse);
     hud.append(left, mid, right);
-    this.barkLine = el('div', 'bark', '');
-    hud.append(this.barkLine);
+    // (The bark lives in #bottom now — see _buildBottom.)
     // ROUND 3 AGENT D (item 4): threat-queue panel — live counts of what is
     // on the field, what is still queued, the NEXT group to spawn, and the
     // kegs' live readiness %. Absolute, top-right below the HUD (same row
@@ -166,13 +165,21 @@ export class UI {
     bar.innerHTML = '';
     const powderBox = el('div', 'powder-box');
     this.powderBtns = [];
+    this.powderLabels = [];
     POWDER_ORDER.forEach((type, i) => {
       const def = POWDER_TYPES[type];
-      const b = el('button', 'powder-btn', `${def.label} · ${def.costPer12px} POWDER`);
+      // ROUND 4 AGENT C (item 14): two lines — the powder name over its
+      // real effect + cost (def.effect is real mechanics from data.js).
+      // The ✓ selected marker is set in update() (see below).
+      const b = el('button', 'powder-btn');
+      const lab = el('span', 'powder-label', def.label);
+      const eff = el('span', 'powder-effect', `${def.effect} · ${def.costPer12px} POWDER`);
+      b.append(lab, eff);
       b.style.setProperty('--powder-color', `#${def.glow.toString(16).padStart(6, '0')}`);
       b.addEventListener('click', () => this.cb.onPowderType(i));
       powderBox.append(b);
       this.powderBtns.push(b);
+      this.powderLabels.push(lab);
     });
     this.lightBtn = el('button', 'light-btn', 'LIGHT FUSE');
     this.lightBtn.addEventListener('click', () => this.cb.onLightFuse());
@@ -185,6 +192,16 @@ export class UI {
     this.helpBtn.addEventListener('click', () => this.cb.onHelp());
     ctl.append(this.pauseBtn, this.muteBtn, this.helpBtn);
     bar.append(powderBox, this.lightBtn, ctl);
+    // ROUND 4 AGENT C (item 6): the bark lives here, absolutely positioned
+    // just above the bar (bottom: calc(100% + 8px) in CSS) — it tracks the
+    // bar's real height at every viewport, so it can never overlap the
+    // powder buttons (a fixed bottom:58px collided with them at 844x390
+    // and 390x844, where the wrapped two-line buttons make the bar
+    // taller). It must be created AFTER bar.innerHTML = '' above, or it
+    // would be wiped. #bottom hides with the chrome on screens, so the
+    // bark hides with it (no win-bark over the results screen).
+    this.barkLine = el('div', 'bark', '');
+    bar.append(this.barkLine);
   }
 
   _setText(node, key, value) {
@@ -268,7 +285,14 @@ export class UI {
     this.lightBtn.classList.toggle('light-ready', !!(world.trail && world.trail.state === 'armed'));
     this.lightBtn.disabled = !(world.trail && world.trail.state === 'armed');
     this.pauseBtn.textContent = paused ? 'RESUME (P)' : 'PAUSE (P)';
-    this.powderBtns.forEach((b, i) => b.classList.toggle('active', POWDER_ORDER[i] === world.powderType));
+    // ROUND 4 AGENT C (item 14): the selected powder reads as a choice —
+    // filled button + a ✓ on the label (the fill alone was easy to miss
+    // against the bright world).
+    this.powderBtns.forEach((b, i) => {
+      const active = POWDER_ORDER[i] === world.powderType;
+      b.classList.toggle('active', active);
+      this._setText(this.powderLabels[i], `powlab${i}`, active ? `✓ ${POWDER_TYPES[POWDER_ORDER[i]].label}` : POWDER_TYPES[POWDER_ORDER[i]].label);
+    });
     // ROUND 3 AGENT D (item 4): threat-queue panel — live counts, grouped
     // by type (queue order preserved for the NEXT group).
     this._updateThreatPanel(world);
@@ -305,8 +329,6 @@ export class UI {
     const aliveTypes = world.enemies.filter((e) => !e.dead).map((e) => e.type);
     if (world.boss && world.boss.alive) aliveTypes.push('titan');
     const fieldHtml = this._threatList(this._groupCounts(aliveTypes), ['ironhide', 'saboteur', 'torchbearer', 'cinderling', 'titan']);
-    const queueCounts = this._groupCounts(world.spawnQueue || []);
-    const queueHtml = this._threatList(queueCounts, ['ironhide', 'saboteur', 'torchbearer', 'cinderling']);
     const queueTotal = (world.spawnQueue || []).length;
     const nextCounts = this._groupCounts((world.spawnQueue || []).slice(0, 5));
     const nextHtml = this._threatList(nextCounts, ['ironhide', 'saboteur', 'torchbearer', 'cinderling']);
@@ -322,10 +344,14 @@ export class UI {
     } else if (kegs.length > 0) {
       kegText = `KEGS ${aliveKegs.length}/${kegs.length} · ${Math.round((aliveKegs.length / kegs.length) * 100)}% READY`;
     } else kegText = 'KEGS —';
+    // ROUND 4 AGENT C (item 5): QUEUED + NEXT were two rows saying almost
+    // the same thing (NEXT is just the first 5 of the queue). One QUEUE
+    // row now: the total still queued + the next group to spawn. Same
+    // info, one row shorter — the panel drops from 126px to ~90px tall
+    // at the action freeze and stops covering the Titan's zone.
     const html = `<div class="threat-title">THREAT QUEUE — WAVE ${world.wave}/10</div>`
       + `<div class="threat-row"><span class="threat-label">ON FIELD</span><span class="threat-vals">${fieldHtml || '— clear'}</span></div>`
-      + `<div class="threat-row"><span class="threat-label">QUEUED</span><span class="threat-vals">${queueTotal > 0 ? `${queueTotal} — ${queueHtml}` : '0 — all spawned'}</span></div>`
-      + `<div class="threat-row"><span class="threat-label">NEXT</span><span class="threat-vals">${nextHtml || '— all spawned'}</span></div>`
+      + `<div class="threat-row"><span class="threat-label">QUEUE</span><span class="threat-vals">${queueTotal > 0 ? `${queueTotal} — next: ${nextHtml}` : '0 — all spawned'}</span></div>`
       + `<div class="threat-row"><span class="threat-label">KEGS</span><span class="threat-vals">${kegText}</span></div>`;
     if (html !== this._threatHtml) {
       this._threatHtml = html;
