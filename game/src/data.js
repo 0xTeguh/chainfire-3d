@@ -34,7 +34,7 @@ export const PALETTE = {
   CREAM: 0xf5e6c8,
   CHARCOAL: 0x2b2b2b,
   SKY_TOP: 0x7a5a9e,
-  SKY_HORIZON: 0xf7c873,
+  SKY_HORIZON: 0xefae5e,
   SUN: 0xffdf8a,
   FIELD_A: 0x5fa860,
   FIELD_B: 0x57a05b,

@@ -240,8 +240,11 @@ export function buildCharacter(kind, opts = {}) {
     // torch held OUT to the side so it never sinks into the body.
     const robe = std(0x8a2d1e, { rough: 0.95 });
     const dark = std(0x3a1a12, { rough: 0.95 });
-    const flameMat = std(0xff7a1a, { emissive: 0xff6a00, ei: 2.2, rough: 0.5 });
-    const flameCoreMat = std(0xffd23f, { emissive: 0xffb020, ei: 2.6, rough: 0.4 });
+    // ROUND 3 AGENT B (item 11, Rizal): the torch flame was a 1-2px dot at
+    // 320px — each torchbearer must read as a distinct orange point. Flame
+    // bigger + hotter so the group does not merge into one red blob.
+    const flameMat = std(0xff7a1a, { emissive: 0xff6a00, ei: 2.8, rough: 0.5 });
+    const flameCoreMat = std(0xffd23f, { emissive: 0xffb020, ei: 3.0, rough: 0.4 });
 
     legL = piv(0, 0.35 * s, 0.3 * s);
     cap(legL, 0.12 * s, 0.2 * s, dark, 0, -0.14 * s, 0);
@@ -273,8 +276,8 @@ export function buildCharacter(kind, opts = {}) {
     const flame = new THREE.Group();
     flame.position.set(0, 0.62 * s, 0);
     torch.add(flame);
-    cone(flame, 0.16 * s, 0.45 * s, flameMat, 0, 0.18 * s, 0);
-    cone(flame, 0.09 * s, 0.3 * s, flameCoreMat, 0, 0.14 * s, 0);
+    cone(flame, 0.22 * s, 0.6 * s, flameMat, 0, 0.24 * s, 0);
+    cone(flame, 0.12 * s, 0.4 * s, flameCoreMat, 0, 0.18 * s, 0);
     flicker.push({ obj: flame, kind: 'scale', base: 1, amp: 0.18, speed: 9, phase: rng() * 6 });
     parts.flame = flame;
     parts.torch = torch;
@@ -336,16 +339,26 @@ export function buildCharacter(kind, opts = {}) {
     box(shield, 0.14 * s, 1.7 * s, 1.0 * s, steel, 0, 0, 0);
     box(shield, 0.06 * s, 1.5 * s, 0.22 * s, red, -0.09 * s, 0, 0);
     ball(shield, 0.2 * s, red, -0.1 * s, 0, 0);
-    // Dark rim trim on the top and bottom edges.
-    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, steelDark, 0, 0.82 * s, 0);
-    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, steelDark, 0, -0.82 * s, 0);
+    // ROUND 3 AGENT B (item 11, Rizal): the dark rim trim let ironhides
+    // merge into the Titan's dark mass at 320px. Bright steel rim instead
+    // — each ironhide carries a light outline that separates it from its
+    // neighbours and from the boss.
+    const rimBright = std(0xb8bcc4, { rough: 0.4, metal: 0.6 });
+    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, rimBright, 0, 0.82 * s, 0);
+    box(shield, 0.16 * s, 0.1 * s, 1.02 * s, rimBright, 0, -0.82 * s, 0);
+    // Vertical rim on both side edges too — a full light frame around the
+    // shield, so the ironhide outline reads even inside a tight group.
+    box(shield, 0.16 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, 0.47 * s);
+    box(shield, 0.16 * s, 1.66 * s, 0.1 * s, rimBright, 0, 0, -0.47 * s);
     parts.shield = shield;
 
     head = piv(0, 2.5 * s, 0);
     box(head, 0.55 * s, 0.5 * s, 0.55 * s, steel, 0, 0, 0);
     box(head, 0.6 * s, 0.12 * s, 0.6 * s, steelDark, 0, -0.28 * s, 0);
     // Red crest fin on top + spike (tallest point).
-    box(head, 0.08 * s, 0.26 * s, 0.5 * s, red, 0, 0.36 * s, 0);
+    // ROUND 3 AGENT B (item 11): crest taller so the ironhide silhouette
+    // reads at 320px even inside a group.
+    box(head, 0.08 * s, 0.34 * s, 0.5 * s, red, 0, 0.4 * s, 0);
     cone(head, 0.12 * s, 0.42 * s, steelDark, 0, 0.55 * s, 0);
     // Slit eyes: glowing red.
     box(head, 0.03 * s, 0.05 * s, 0.16 * s, redGlow, -0.29 * s, 0.05 * s, 0.13 * s);
@@ -360,7 +373,9 @@ export function buildCharacter(kind, opts = {}) {
     // hotter lamp so the telegraph reads in the wide preset.
     const robe = std(0x6b5aa8, { rough: 0.95 });
     const dark = std(0x2e2447, { rough: 0.95 });
-    const lampMat = std(0x7ed957, { emissive: 0x4caf2a, ei: 2.6 });
+    // ROUND 3 AGENT B (item 11, Rizal): the helmet lamp was a 1px dot at
+    // 320px. Bigger + hotter so each saboteur carries a distinct green point.
+    const lampMat = std(0x7ed957, { emissive: 0x4caf2a, ei: 3.2 });
     const fuseMat = std(0x8a6a3a, { rough: 0.9 });
 
     legL = piv(0, 0.55 * s, 0.25 * s);
@@ -391,7 +406,7 @@ export function buildCharacter(kind, opts = {}) {
     const helm = ball(head, 0.45 * s, dark, 0, 0.16 * s, 0);
     helm.scale.set(1, 0.62, 1);
     cyl(head, 0.05 * s, 0.05 * s, 0.16 * s, dark, -0.42 * s, 0.22 * s, 0);
-    const lamp = box(head, 0.16 * s, 0.16 * s, 0.16 * s, lampMat, -0.5 * s, 0.26 * s, 0);
+    const lamp = box(head, 0.22 * s, 0.22 * s, 0.22 * s, lampMat, -0.5 * s, 0.26 * s, 0);
     flicker.push({ obj: lamp, kind: 'emissive', mat: lampMat, base: 2.0, amp: 0.25, speed: 7, phase: rng() * 6 });
     // Green glowing eyes.
     ball(head, 0.11 * s, std(0x7ed957, { emissive: 0x4caf2a, ei: 1.8 }), -0.38 * s, 0.06 * s, 0.16 * s);

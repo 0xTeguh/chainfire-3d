@@ -52,23 +52,25 @@ function makeGlowTexture() {
 }
 
 // Fireball texture (P3): a shaped fireball, not a flat bright disc —
-// white-gold core, orange mid, deep-orange edge, plus six fixed flame
-// tongues around the rim. Fixed drawing = identical every load.
+// ROUND 3 AGENT B (item 4, Rizal): the old white-gold core (255,244,200)
+// washed to WHITE at additive peak over the bright field. New core is
+// deep gold (255,186,70), mid orange, edge deep red-orange — warm and
+// shaped, never white. Flame tongues deeper orange too.
 function makeFireballTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
   const grad = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
-  grad.addColorStop(0, 'rgba(255, 244, 200, 1)');
-  grad.addColorStop(0.25, 'rgba(255, 205, 90, 0.95)');
-  grad.addColorStop(0.55, 'rgba(255, 140, 30, 0.7)');
-  grad.addColorStop(0.8, 'rgba(220, 90, 10, 0.35)');
-  grad.addColorStop(1, 'rgba(200, 60, 0, 0)');
+  grad.addColorStop(0, 'rgba(255, 186, 70, 1)');
+  grad.addColorStop(0.25, 'rgba(255, 140, 30, 0.95)');
+  grad.addColorStop(0.55, 'rgba(235, 95, 10, 0.7)');
+  grad.addColorStop(0.8, 'rgba(190, 60, 5, 0.35)');
+  grad.addColorStop(1, 'rgba(170, 45, 0, 0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 128, 128);
   ctx.globalCompositeOperation = 'lighter';
-  ctx.fillStyle = 'rgba(255, 150, 40, 0.45)';
+  ctx.fillStyle = 'rgba(235, 110, 15, 0.45)';
   for (const deg of [15, 75, 140, 205, 265, 330]) {
     const a = (deg * Math.PI) / 180;
     ctx.save();
@@ -131,10 +133,13 @@ export class Renderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    // ROUND 3 AGENT B (item 7, Rizal): the frame was washed out — exposure
+    // 1.15 + sun 2.6 + hemi 0.85 blew the field and sky pale. Dialled down
+    // ~20%: golden hour stays, glare goes.
+    this.renderer.toneMappingExposure = 0.95;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xe8a860, 95, 210);
+    this.scene.fog = new THREE.Fog(0xdd9660, 95, 210);
 
     this.camera = new THREE.PerspectiveCamera(45, 1280 / 720, 0.1, 500);
     this.camPos = new THREE.Vector3(34, 30, 44);
@@ -148,7 +153,7 @@ export class Renderer {
     // P10: mirrored from +x to -x with the disc — the title/action/draft
     // cameras all look toward -x, so the sun must live on that side or no
     // shot ever shows it. Shadows now fall toward +x (toward the camera).
-    this.sun = new THREE.DirectionalLight(0xffd9a0, 2.6);
+    this.sun = new THREE.DirectionalLight(0xffd9a0, 2.0);
     this.sun.position.set(-90, 42, -46);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -161,7 +166,7 @@ export class Renderer {
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
-    this.hemi = new THREE.HemisphereLight(0x8a6ab8, 0x3d6b46, 0.85);
+    this.hemi = new THREE.HemisphereLight(0x8a6ab8, 0x3d6b46, 0.7);
     this.scene.add(this.hemi);
 
     this.glowTex = makeGlowTexture();
@@ -230,19 +235,22 @@ export class Renderer {
     this.trailMat = new THREE.MeshBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
 
     // Fire front: flame cone + glow sprite + point light.
+    // ROUND 3 AGENT B (item 4, Rizal): the old 9u glow @ 0.85 + light 26
+    // washed a big yellow-white hole at the burn front. Smaller, deeper,
+    // dimmer: the fire reads as a shaped warm flame, not a white column.
     this.fireGroup = new THREE.Group();
     this.fireGroup.visible = false;
     const flame = new THREE.Mesh(
       new THREE.ConeGeometry(1.4, 3.4, 10),
-      new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff6a00, emissiveIntensity: 3, transparent: true, opacity: 0.95 })
+      new THREE.MeshStandardMaterial({ color: 0xf06010, emissive: 0xe85000, emissiveIntensity: 2.2, transparent: true, opacity: 0.95 })
     );
     flame.position.y = 1.7;
     this.fireGroup.add(flame);
-    const fireGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffa030, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
-    fireGlow.scale.set(9, 9, 1);
+    const fireGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff8a1a, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    fireGlow.scale.set(6.5, 6.5, 1);
     fireGlow.position.y = 1.2;
     this.fireGroup.add(fireGlow);
-    this.fireLight = new THREE.PointLight(0xff8a2a, 26, 22, 1.5);
+    this.fireLight = new THREE.PointLight(0xff8a2a, 16, 18, 1.5);
     this.fireLight.position.y = 2;
     this.fireGroup.add(this.fireLight);
     this.scene.add(this.fireGroup);
@@ -498,8 +506,12 @@ export class Renderer {
       if (i < n - 1) { dx = pts[i + 1].x - pts[i].x; dz = pts[i + 1].z - pts[i].z; }
       else if (i > 0) { dx = pts[i].x - pts[i - 1].x; dz = pts[i].z - pts[i - 1].z; }
       const len = Math.hypot(dx, dz) || 1;
-      const px = -dz / len * 0.15;
-      const pz = dx / len * 0.15;
+      // ROUND 3 AGENT B (item 10, Rizal): the 0.3u ribbon is ~1px at 320px
+      // and vanishes in the thumbnail. Main ribbon 0.3u -> 0.44u, halo
+      // 1.6u -> 2.2u @ 0.6, bed 1.0u -> 1.5u — the burning trail must read
+      // as a thick high-contrast line at 320px.
+      const px = -dz / len * 0.22;
+      const pz = dx / len * 0.22;
       const y = terrainHeight(pts[i].x, pts[i].z) + 0.18;
       positions[i * 6] = pts[i].x + px;
       positions[i * 6 + 1] = y;
@@ -507,9 +519,9 @@ export class Renderer {
       positions[i * 6 + 3] = pts[i].x - px;
       positions[i * 6 + 4] = y;
       positions[i * 6 + 5] = pts[i].z - pz;
-      // Glow halo vertices: 5x wider, 0.06u below the main ribbon.
-      const gx = -dz / len * 0.8;
-      const gz = dx / len * 0.8;
+      // Glow halo vertices: 2.2u wide (was 1.6u), 0.06u below the main ribbon.
+      const gx = -dz / len * 1.1;
+      const gz = dx / len * 1.1;
       const gy = terrainHeight(pts[i].x, pts[i].z) + 0.12;
       glowPositions[i * 6] = pts[i].x + gx;
       glowPositions[i * 6 + 1] = gy;
@@ -522,9 +534,9 @@ export class Renderer {
         glowColors[(i * 2 + v) * 3 + 1] = colHalo.g;
         glowColors[(i * 2 + v) * 3 + 2] = colHalo.b;
       }
-      // Bed vertices: 1.0u wide (half-width 0.5), 0.02u below the halo.
-      const bx = -dz / len * 0.5;
-      const bz = dx / len * 0.5;
+      // Bed vertices: 1.5u wide (half-width 0.75, was 1.0u), 0.02u below the halo.
+      const bx = -dz / len * 0.75;
+      const bz = dx / len * 0.75;
       const by = terrainHeight(pts[i].x, pts[i].z) + 0.10;
       bedPositions[i * 6] = pts[i].x + bx;
       bedPositions[i * 6 + 1] = by;
@@ -570,7 +582,7 @@ export class Renderer {
     // Glow halo mesh (same path, deep-orange, wider, additive).
     if (!this.trailGlowGeo) {
       this.trailGlowGeo = new THREE.BufferGeometry();
-      this.trailGlowMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+      this.trailGlowMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
       this.trailGlowMesh = new THREE.Mesh(this.trailGlowGeo, this.trailGlowMat);
       this.trailGlowMesh.frustumCulled = false;
       this.scene.add(this.trailGlowMesh);
@@ -758,7 +770,7 @@ export class Renderer {
       const r = 1 + f * slot.maxR;
       slot.flash.position.set(slot.x, y, slot.z);
       slot.flash.scale.setScalar(r);
-      slot.flash.material.opacity = (1 - f) * 0.85;
+      slot.flash.material.opacity = (1 - f) * 0.6;
       slot.ring.position.set(slot.x, y + 0.2, slot.z);
       slot.ring.scale.setScalar(1 + f * slot.maxR * 1.4);
       slot.ring.material.opacity = (1 - f) * 0.8;

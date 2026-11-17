@@ -247,7 +247,56 @@ export function buildTerrain(scene, rng) {
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Far hills: 3 layers of big low-poly hills beyond the field edges.
+  // Far hills: 3 layers of JAGGED mountains beyond the field edges.
+  // ROUND 3 AGENT B (item 6, Rizal): the smooth 7-sided cones read as
+  // flat pyramids — one pale face, one dark face, straight triangular
+  // silhouette. New recipe: a jittered multi-ring cone (jagged ridgeline,
+  // off-centre apex) with per-face light/dark vertex colours (sunlit warm
+  // side vs shadowed cool side), plus a smaller satellite peak per mountain
+  // for a layered silhouette. Jitter uses a DEDICATED rng stream so the
+  // main seeded layout (grass, flowers, clouds, birds) is unchanged.
+  const peakRng = mulberry32(20261117 + 913);
+  const makeJaggedPeak = (radius, height, baseColor) => {
+    let geo = new THREE.ConeGeometry(radius, height, 7, 3);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i += 1) {
+      const y = pos.getY(i);
+      const isApex = y > height / 2 - 0.01;
+      const isBase = y < -height / 2 + 0.01;
+      if (!isBase) {
+        const j = 1 + (peakRng() - 0.5) * 0.44;
+        pos.setX(i, pos.getX(i) * j);
+        pos.setZ(i, pos.getZ(i) * j);
+        // The apex ring stays coplanar (one point, not a ragged crown).
+        if (!isApex) pos.setY(i, y + (peakRng() - 0.5) * height * 0.14);
+      }
+    }
+    // Apex leans off-centre as ONE point, so the silhouette is not a
+    // symmetric triangle and the summit does not split open.
+    const leanX = (peakRng() - 0.5) * radius * 0.5;
+    const leanZ = (peakRng() - 0.5) * radius * 0.5;
+    for (let i = 0; i < pos.count; i += 1) {
+      if (pos.getY(i) > height / 2 - 0.01) { pos.setX(i, leanX); pos.setZ(i, leanZ); }
+    }
+    geo = geo.toNonIndexed();
+    geo.computeVertexNormals();
+    const nrm = geo.attributes.normal;
+    const colors = new Float32Array(nrm.count * 3);
+    const light = new THREE.Color(baseColor).lerp(new THREE.Color(0x9ab86a), 0.45);
+    const dark = new THREE.Color(baseColor).lerp(new THREE.Color(0x16301f), 0.55);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < nrm.count; i += 1) {
+      // Sun sits at -x: faces with a -x normal are sunlit (warm light),
+      // faces with a +x normal are shadowed (deep cool).
+      const f = Math.max(0, Math.min(1, 0.5 - nrm.getX(i) * 0.85));
+      tmp.copy(dark).lerp(light, f);
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+  };
   const hillLayers = [
     { count: 7, dist: 78, size: [22, 10, 18], color: 0x3d7a52 },
     { count: 6, dist: 100, size: [30, 16, 24], color: 0x356b4a },
@@ -256,14 +305,19 @@ export function buildTerrain(scene, rng) {
   for (const layer of hillLayers) {
     for (let i = 0; i < layer.count; i += 1) {
       const angle = (i / layer.count) * Math.PI * 2 + range(rng, -0.2, 0.2);
-      const hill = new THREE.Mesh(
-        new THREE.ConeGeometry(layer.size[0], layer.size[1], 7),
-        new THREE.MeshStandardMaterial({ color: layer.color, roughness: 1, flatShading: true })
-      );
+      const hill = makeJaggedPeak(layer.size[0], layer.size[1], layer.color);
       hill.position.set(Math.cos(angle) * layer.dist, layer.size[1] * 0.32, Math.sin(angle) * layer.dist);
       hill.scale.z = layer.size[2] / layer.size[0];
       hill.rotation.y = rng() * Math.PI;
       group.add(hill);
+      // Satellite peak: smaller jagged sibling, offset along the ridge,
+      // so each mountain reads as a layered mass, not one lone triangle.
+      const sat = makeJaggedPeak(layer.size[0] * 0.55, layer.size[1] * 0.6, layer.color);
+      const sa = angle + 0.22;
+      sat.position.set(Math.cos(sa) * (layer.dist + 6), layer.size[1] * 0.2, Math.sin(sa) * (layer.dist + 6));
+      sat.scale.z = layer.size[2] / layer.size[0];
+      sat.rotation.y = rng() * Math.PI;
+      group.add(sat);
     }
   }
 
@@ -492,15 +546,11 @@ export function buildTerrain(scene, rng) {
     dummy.position.set(x, terrainHeight(x, z), z);
     dummy.rotation.set(0, rng() * Math.PI, 0);
     dummy.scale.setScalar(range(rng, 0.8, 1.3));
-    // Grass cleanup (Mark 20:13 WIB — "coretan coklat" in the middle of the
-    // field): the near-side wheat patches (i % 3 !== 0) read as brown
-    // scratches at eagle distance. Bury them (y = -100) instead of deleting:
-    // every rng() call above stays, so the seeded layout of everything
-    // placed after (grass, flowers, clouds, birds) is unchanged, and the
-    // sway bases in render3d.js stay valid (a zero scale would break
-    // Matrix4.decompose). The far-side patch (i % 3 === 0) stays — it reads
-    // as a wheat field along the top lane.
-    if (i % 3 !== 0) dummy.position.y = -100;
+    // ROUND 3 AGENT B (item 12, Rizal): the far-side patch ALSO reads as
+    // dry brown tufts in the top-left corner of the field (live view) —
+    // bury it too, same technique (rng calls preserved, sway bases valid).
+    // No wheat remains; the field is clean green + green tufts + pebbles.
+    dummy.position.y = -100;
     dummy.updateMatrix();
     wheat.setMatrixAt(i, dummy.matrix);
   }
@@ -689,7 +739,7 @@ export function buildTerrain(scene, rng) {
 
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffc53d, fog: false })
+    new THREE.MeshBasicMaterial({ color: 0xf5a623, fog: false })
   );
   // P10 (Rizal fix): the disc was at +x (120, 26, -60) — ~70° off-axis
   // from the title/action/draft cameras (all look toward -x), so no shot
@@ -708,22 +758,29 @@ export function buildTerrain(scene, rng) {
 
   const halo = new THREE.Mesh(
     new THREE.CircleGeometry(13, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffa030, transparent: true, opacity: 0.45, fog: false })
+    new THREE.MeshBasicMaterial({ color: 0xf08c20, transparent: true, opacity: 0.3, fog: false })
   );
   halo.position.set(-40, 18, -130.5);
   halo.lookAt(0, 6, 0);
   halo.name = 'sunHalo';
   group.add(halo);
 
-  // Clouds: flattened white puffs drifting (deterministic drift from sim time).
+  // Clouds: soft peach/cream puffs drifting (deterministic drift from sim time).
+  // ROUND 3 AGENT B (item 5, Rizal): the old puffs were flat-shaded 8x6
+  // spheres in cream with an orange emissive — they read as grey-green
+  // faceted rocks, not clouds. New recipe: rounder (12x8) smooth-shaded
+  // puffs, pale cream lit material + a soft mauve-grey shade material on
+  // alternate puffs (shading, not flat colour), almost no emissive, so the
+  // clouds read as soft shaded masses in a golden-hour sky.
   const clouds = new THREE.Group();
   clouds.name = 'clouds';
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfff2d8, roughness: 1, flatShading: true, transparent: true, opacity: 0.85, emissive: 0xffd9a0, emissiveIntensity: 0.2 });
+  const cloudLitMat = new THREE.MeshStandardMaterial({ color: 0xffe9c4, roughness: 1, flatShading: false, transparent: true, opacity: 0.92, emissive: 0xffc98a, emissiveIntensity: 0.5 });
+  const cloudShadeMat = new THREE.MeshStandardMaterial({ color: 0xe2bfa4, roughness: 1, flatShading: false, transparent: true, opacity: 0.92, emissive: 0xd9a67e, emissiveIntensity: 0.4 });
   for (let i = 0; i < 10; i += 1) {
     const cloud = new THREE.Group();
     const puffs = 3 + Math.floor(rng() * 3);
     for (let p = 0; p < puffs; p += 1) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(range(rng, 2.5, 5), 8, 6), cloudMat);
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(range(rng, 2.5, 5), 12, 8), p % 2 === 0 ? cloudLitMat : cloudShadeMat);
       puff.position.set(p * 3.5 - puffs * 1.5, range(rng, -0.6, 0.6), range(rng, -1.5, 1.5));
       puff.scale.y = 0.55;
       cloud.add(puff);
