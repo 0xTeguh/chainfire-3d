@@ -318,6 +318,12 @@ function runSteps(n) {
     drainAudioEvents();
     checkPhaseTransitions();
   }
+  // ROUND 3 AGENT D (item 1): the event banner is driven by sim-state
+  // transitions — the bot steps the sim synchronously inside one evaluate,
+  // so no rAF frame observes the intermediate states; this call (also made
+  // from ui.update() in live play) sets it from the frozen state, so the
+  // staged action shot shows "CHAIN x8!" deterministically.
+  if (world) ui.updateEventBanner(world);
   renderer.update(SIM.STEP_DT);
   renderer.render();
 }

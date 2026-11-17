@@ -395,6 +395,41 @@ export class Renderer {
       this.tracers.push(tr);
     }
 
+    // ROUND 3 AGENT D (item 11): ambient particles — floating embers near
+    // the fort/field + dust motes drifting in the evening light. Positions
+    // are pure functions of world.time (see _updateAmbient), seeded once
+    // here with mulberry32 — NOL Math.random, so staged frames stay
+    // byte-identical. Distant birds already exist (terrain.js, 5 birds).
+    const ambientRng = mulberry32(20261117 + 4242);
+    this._embers = [];
+    for (let i = 0; i < 48; i += 1) {
+      this._embers.push({
+        bx: -45 + ambientRng() * 75, bz: -25 + ambientRng() * 50,
+        by: 1 + ambientRng() * 5, speed: 0.25 + ambientRng() * 0.45,
+        phase: ambientRng() * Math.PI * 2, amp: 0.8 + ambientRng() * 1.2
+      });
+    }
+    this._emberGeo = new THREE.BufferGeometry();
+    this._emberGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(48 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    this._emberMat = new THREE.PointsMaterial({ size: 1.1, map: this.glowTex, color: 0xff8a1a, transparent: true, opacity: 1.0, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+    this._emberPoints = new THREE.Points(this._emberGeo, this._emberMat);
+    this._emberPoints.frustumCulled = false;
+    this.scene.add(this._emberPoints);
+    this._motes = [];
+    for (let i = 0; i < 36; i += 1) {
+      this._motes.push({
+        bx: -30 + ambientRng() * 40, bz: -20 + ambientRng() * 40,
+        by: 2 + ambientRng() * 8, speed: 0.08 + ambientRng() * 0.12,
+        phase: ambientRng() * Math.PI * 2, amp: 1 + ambientRng() * 2
+      });
+    }
+    this._moteGeo = new THREE.BufferGeometry();
+    this._moteGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(36 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    this._moteMat = new THREE.PointsMaterial({ size: 0.55, map: this.glowTex, color: 0xffe9a8, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+    this._motePoints = new THREE.Points(this._moteGeo, this._moteMat);
+    this._motePoints.frustumCulled = false;
+    this.scene.add(this._motePoints);
+
     // Keg meshes (rebuilt per wave).
     this.kegMeshes = new Map();
     this.kegGeo = new THREE.CylinderGeometry(0.85, 0.85, 1.2, 10);
@@ -1198,6 +1233,34 @@ export class Renderer {
       const flap = Math.sin(t * 9 + u.phase) * 0.55;
       bird.children[0].rotation.z = flap;
       bird.children[1].rotation.z = -flap;
+    }
+    // ROUND 3 AGENT D (item 11): embers rise and drift over the field;
+    // dust motes drift slowly in the evening light. Pure functions of t —
+    // deterministic at any frozen time. Y is terrain-relative so no mote
+    // ever sinks under the fort hill.
+    {
+      const pos = this._emberGeo.attributes.position.array;
+      for (let i = 0; i < this._embers.length; i += 1) {
+        const e = this._embers[i];
+        const rise = ((t * e.speed + e.phase) % 6 + 6) % 6;
+        const x = e.bx + Math.sin(t * 0.4 + e.phase) * e.amp;
+        const z = e.bz + Math.cos(t * 0.3 + e.phase) * e.amp;
+        pos[i * 3] = x;
+        pos[i * 3 + 1] = terrainHeight(x, z) + 0.5 + e.by * 0.4 + rise;
+        pos[i * 3 + 2] = z;
+      }
+      this._emberGeo.attributes.position.needsUpdate = true;
+      this._emberMat.opacity = 0.85 + Math.sin(t * 2) * 0.15;
+      const mpos = this._moteGeo.attributes.position.array;
+      for (let i = 0; i < this._motes.length; i += 1) {
+        const m = this._motes[i];
+        const x = m.bx + Math.sin(t * 0.15 + m.phase) * m.amp;
+        const z = m.bz + Math.cos(t * 0.12 + m.phase) * m.amp;
+        mpos[i * 3] = x;
+        mpos[i * 3 + 1] = terrainHeight(x, z) + 1 + m.by * 0.5 + Math.sin(t * 0.1 + m.phase * 2) * 0.8;
+        mpos[i * 3 + 2] = z;
+      }
+      this._moteGeo.attributes.position.needsUpdate = true;
     }
     // Flags wave.
     for (let i = 0; i < this.fort.flags.length; i += 1) {
