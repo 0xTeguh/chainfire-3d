@@ -126,7 +126,26 @@ const CAMERA_PRESETS = {
   // the wall entirely and the CHAIN chip collides with a +400 popup.
   // N3 [19,39,54]->[0,0,0] wins: Titan fully in frame (~180px), same 11
   // enemies in frame as B, wall + defenders slightly bigger. N3 it is.
-  action: { pos: [19, 39, 54], target: [0, 0, 0] },
+  //
+  // R3E2 (Mark 00:25 WIB, "sama aja, agak di deketin screenshot nya dikit"):
+  // probe r3e2-cam-probe.cjs froze the SAME x8 state and shot N3 + 4 cameras
+  // closer along the SAME ray (same look-at [0,0,0]): C10 [17.1,35.1,48.6],
+  // C20 [15.2,31.2,43.2], C30 [13.3,27.3,37.8], C40 [11.4,23.4,32.4].
+  // HARD CEILING FOUND: the Titan sits ~28 deg off-axis at N3 (half-FOV
+  // 36.4 deg), so every step closer pushes its body toward the right edge.
+  // C20 cuts most of the Titan out of frame, C30/C40 lose it entirely (and
+  // C30/C40 also collide popups with the CHAIN banner + SOUND/HELP buttons).
+  // C10 is the max the same-ray approach allows: defenders ~9% bigger on
+  // screen (Thom reads as a person with face+cap, muzzle glow bigger),
+  // BUT the Titan's right flank is SLIGHTLY CUT at the frame edge (proven
+  // by the 3x right-edge strip, proof-r3e2/cmp-right-edge.jpg — head,
+  // furnace ring and platform stay in frame, the right shoulder/arm is
+  // sliced). No same-ray camera makes the defenders clearly big AND keeps
+  // the Titan whole: 10% is the ceiling, and it is a modest gain, not a
+  // dramatic one. If Mark still says "sama aja", the next lever is NOT
+  // more zoom — it is a different camera angle (wall-side shot, Titan
+  // trades out) or a re-staged freeze moment. C10 it is, cut disclosed.
+  action: { pos: [17.1, 35.1, 48.6], target: [0, 0, 0] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
 };
