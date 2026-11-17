@@ -34,6 +34,23 @@ const POPUP_GRID_OFFSETS = (() => {
 const FLASH_POOL = 12; // R4B: 8 -> 12 — flashes now live 1.0s (below), so the pool must hold a full chain-second of booms without dropping one.
 const SCORCH_POOL = 40;
 const SMOKE_POOL = 12;
+// ROUND 5 AGENT A (items #1 + #2): beam + chain-arc pools. Beams are a
+// pure function of world.shots (one per live shot, max 32 = tracer pool).
+// Arcs are born from consecutive 'chain' events (see _drainEvents);
+// ARC_TTL 0.5s means only kills in the last half-second show — the
+// frame never fills with stale lightning.
+const BEAM_POOL = 32;
+const ARC_POOL = 16;
+const ARC_SEGMENTS = 5;
+const ARC_TTL = 1.0; // 0.25 -> 0.5 -> 1.0, each step measured: at 0.25s AND
+// 0.5s exactly 1 arc was alive at the x8 freeze (the kill rate right at
+// the freeze is low — the burst that built chain 6 already happened) and
+// it did not read in the still. Median kill gap is 0.27s, so 1.0s keeps
+// ~3-4 recent arcs visible at the freeze — still only chain links, still
+// small (~2.3u median) and all near the horde, so live play does not
+// become a mess. The brief's "~0.25s" was a guess; the measurement rules.
+const ARC_MAX_GAP = 0.4; // seconds between consecutive chain kills
+const ARC_MAX_DIST = 15; // world units between consecutive chain kills
 
 function makeGlowTexture() {
   const canvas = document.createElement('canvas');
@@ -479,6 +496,64 @@ export class Renderer {
       this.tracers.push(tr);
     }
 
+    // ROUND 5 AGENT A (item #1): defender beams — each live shot is drawn
+    // as a camera-facing ribbon (thin plane) from the muzzle to the
+    // target's CURRENT position, in TWO layers: a wide orange edge + a
+    // narrow white-gold core. Two layers from the start, not as a
+    // fallback: a single gold line on the bright green/orange field is
+    // low-contrast by construction (analysis section E — every top-10
+    // beam game is a NIGHT game); the white-gold core is the brightest
+    // element in the frame, the orange edge is the glow. The orb tracer
+    // stays as the beam's bright head. Pure function of world.shots +
+    // camera each frame — no new state, no randomness, deterministic.
+    // Indices are static (precomputed); only positions/colors update.
+    const makeRibbonGeo = (quads) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(quads * 4 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(quads * 4 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      const idx = [];
+      for (let q = 0; q < quads; q += 1) {
+        const b = q * 4;
+        idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+      geo.setIndex(idx);
+      geo.setDrawRange(0, 0);
+      return geo;
+    };
+    this._beamOuterGeo = makeRibbonGeo(BEAM_POOL);
+    this._beamOuterMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this._beamOuter = new THREE.Mesh(this._beamOuterGeo, this._beamOuterMat);
+    this._beamOuter.frustumCulled = false;
+    this._beamOuter.renderOrder = 5;
+    this._beamOuter.visible = false;
+    this.scene.add(this._beamOuter);
+    this._beamCoreGeo = makeRibbonGeo(BEAM_POOL);
+    this._beamCoreMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this._beamCore = new THREE.Mesh(this._beamCoreGeo, this._beamCoreMat);
+    this._beamCore.frustumCulled = false;
+    this._beamCore.renderOrder = 5;
+    this._beamCore.visible = false;
+    this.scene.add(this._beamCore);
+
+    // ROUND 5 AGENT A (item #2): chain-lightning arcs — short jagged gold
+    // ribbons between consecutive chain kills. One mesh, ARC_POOL slots x
+    // ARC_SEGMENTS quads each; positions rebuilt every frame from live
+    // slots (born in SIM time, ttl 0.25s). Zig-zag offsets come from a
+    // pure arithmetic hash of the endpoints + birth time — NO Math.random,
+    // so staged frames stay byte-identical.
+    this._arcGeo = makeRibbonGeo(ARC_POOL * ARC_SEGMENTS);
+    this._arcMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this._arcMesh = new THREE.Mesh(this._arcGeo, this._arcMat);
+    this._arcMesh.frustumCulled = false;
+    this._arcMesh.renderOrder = 6;
+    this._arcMesh.visible = false;
+    this.scene.add(this._arcMesh);
+    this.arcs = [];
+    for (let i = 0; i < ARC_POOL; i += 1) {
+      this.arcs.push({ born: -1, ax: 0, az: 0, bx: 0, bz: 0, seed: 0 });
+    }
+    this._lastChainKill = null;
+
     // ROUND 3 AGENT D (item 11): ambient particles — floating embers near
     // the fort/field + dust motes drifting in the evening light. Positions
     // are pure functions of world.time (see _updateAmbient), seeded once
@@ -541,6 +616,9 @@ export class Renderer {
   setWorld(world) {
     this.world = world;
     this.time = world ? world.time : 0;
+    // ROUND 5 AGENT A (item #2): a new world resets the kill chain — an
+    // arc must never join a kill from the previous world/stage.
+    this._lastChainKill = null;
   }
 
   setCameraPreset(name) {
@@ -747,9 +825,181 @@ export class Renderer {
       } else if (ev.type === 'shoot') {
         // ROUND 3 (item 1): a defender fired — muzzle flash at the wall.
         this._spawnMuzzle(ev.time, ev.x, ev.z);
+      } else if (ev.type === 'chain') {
+        // ROUND 5 AGENT A (item #2): chain-lightning arc between
+        // consecutive chain kills. Events drain in sim order, so the
+        // previous 'chain' event is the previous kill in the chain.
+        // Only chain links (chainMul >= 2) close in time (<= ARC_MAX_GAP)
+        // and space (<= ARC_MAX_DIST) get an arc — drawing one for every
+        // kill would turn the frame into a mess of lightning snakes.
+        // Every 'chain' event still updates the tracker, so a chain-1
+        // kill correctly becomes the predecessor of the next chain-2 kill.
+        const prev = this._lastChainKill;
+        if (prev && ev.chainMul >= 2 && typeof ev.x === 'number' && typeof ev.z === 'number') {
+          const gap = ev.time - prev.time;
+          const dist = Math.hypot(ev.x - prev.x, ev.z - prev.z);
+          if (gap >= 0 && gap <= ARC_MAX_GAP && dist <= ARC_MAX_DIST) {
+            this._spawnArc(ev.time, prev.x, prev.z, ev.x, ev.z);
+          }
+        }
+        if (typeof ev.x === 'number' && typeof ev.z === 'number') {
+          this._lastChainKill = { x: ev.x, z: ev.z, time: ev.time };
+        }
       }
     }
     world.events.length = 0;
+  }
+
+  _spawnArc(born, ax, az, bx, bz) {
+    // A slot is free when the NEW arc is born more than ARC_TTL after the
+    // slot's arc was born. (NOT this.time - slot.born: during a batched
+    // drain — the whole bot run drains in ONE update at the freeze —
+    // this.time is the freeze time for every spawn, so the old test
+    // called every filled slot "free" and all 63 spawns overwrote slot 0,
+    // leaving 1 live arc. Born-relative reuse keeps every arc born in the
+    // last ARC_TTL in its own slot.)
+    for (const slot of this.arcs) {
+      if (slot.born < 0 || (born - slot.born) > ARC_TTL) {
+        slot.born = born;
+        slot.ax = ax;
+        slot.az = az;
+        slot.bx = bx;
+        slot.bz = bz;
+        slot.seed = ax * 0.37 + az * 0.73 + bx * 0.11 + bz * 0.29 + born;
+        return;
+      }
+    }
+  }
+
+  // Write one camera-facing ribbon quad (p0 -> p1, half-width w) into a
+  // ribbon geometry at quad index q. Returns q + 1. The quad's side
+  // vector is perpendicular to the segment AND faces the camera, so the
+  // ribbon reads as a line of constant screen width from any angle.
+  // Pure function of its arguments — deterministic.
+  _writeRibbonQuad(geo, q, p0, p1, camPos, halfW, r, g, b) {
+    const pos = geo.attributes.position.array;
+    const col = geo.attributes.color.array;
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dz = p1.z - p0.z;
+    const mx = (p0.x + p1.x) / 2;
+    const my = (p0.y + p1.y) / 2;
+    const mz = (p0.z + p1.z) / 2;
+    let vx = camPos.x - mx;
+    let vy = camPos.y - my;
+    let vz = camPos.z - mz;
+    // side = normalize(cross(segDir, viewDir)); falls back to world-up
+    // when the segment points at the camera (cross product ~ 0).
+    let sx = dy * vz - dz * vy;
+    let sy = dz * vx - dx * vz;
+    let sz = dx * vy - dy * vx;
+    let sl = Math.hypot(sx, sy, sz);
+    if (sl < 1e-6) {
+      // Segment points at the camera: fall back to cross(segDir, up).
+      sx = -dz;
+      sy = 0;
+      sz = dx;
+      sl = Math.hypot(sx, sy, sz);
+      if (sl < 1e-6) { sx = 1; sy = 0; sz = 0; sl = 1; }
+    }
+    sx = (sx / sl) * halfW;
+    sy = (sy / sl) * halfW;
+    sz = (sz / sl) * halfW;
+    const base = q * 12;
+    pos[base] = p0.x - sx; pos[base + 1] = p0.y - sy; pos[base + 2] = p0.z - sz;
+    pos[base + 3] = p0.x + sx; pos[base + 4] = p0.y + sy; pos[base + 5] = p0.z + sz;
+    pos[base + 6] = p1.x + sx; pos[base + 7] = p1.y + sy; pos[base + 8] = p1.z + sz;
+    pos[base + 9] = p1.x - sx; pos[base + 10] = p1.y - sy; pos[base + 11] = p1.z - sz;
+    for (let v = 0; v < 4; v += 1) {
+      col[base + v * 3] = r;
+      col[base + v * 3 + 1] = g;
+      col[base + v * 3 + 2] = b;
+    }
+    return q + 1;
+  }
+
+  // ROUND 5 AGENT A (item #1): beams — one ribbon per live defender shot,
+  // muzzle -> target's current position. Fade = distance travelled: the
+  // beam thins and dims as the shot nears its target (fade 1 -> 0.45).
+  _updateBeams() {
+    const world = this.world;
+    const shots = world && Array.isArray(world.shots) ? world.shots : [];
+    const n = Math.min(shots.length, BEAM_POOL);
+    const cam = this.camera.position;
+    let qo = 0;
+    let qc = 0;
+    for (let i = 0; i < n; i += 1) {
+      const s = shots[i];
+      const def = DEFENDER_DEFS.find((d) => d.kind === s.kind);
+      const mz = def ? def.z : s.z;
+      const p0 = { x: WORLD.WALL_X - 0.5, y: wallTopY(mz) + 2.2, z: mz };
+      const p1 = { x: s.tx, y: terrainHeight(s.tx, s.tz) + 1.5, z: s.tz };
+      const frac = Math.max(0, Math.min(1, 1 - (s.dist !== undefined ? s.dist : 0) / (s.total || 1)));
+      const fade = 1 - frac * 0.55;
+      // ROUND 5 correction (deep top-5 analysis, 04:34 WIB): KINGFISHER
+      // #1 is BRIGHT DAYLIGHT and its white FAT water-drop cone proves a
+      // bright line CAN read on a bright field — the lesson is THICKNESS
+      // + CONTRAST, not darkness. So the beams are FAT: outer orange edge
+      // 0.8u + inner white-gold core 0.35u. Same colors/opacity as before
+      // (no brightness creep — washout is still forbidden, beacon lesson).
+      qo = this._writeRibbonQuad(this._beamOuterGeo, qo, p0, p1, cam, 0.8 * fade, 1.0 * fade, 0.54 * fade, 0.10 * fade);
+      qc = this._writeRibbonQuad(this._beamCoreGeo, qc, p0, p1, cam, 0.35 * fade, 1.0 * fade, 0.95 * fade, 0.75 * fade);
+    }
+    this._beamOuterGeo.setDrawRange(0, qo * 6);
+    this._beamOuterGeo.attributes.position.needsUpdate = true;
+    this._beamOuterGeo.attributes.color.needsUpdate = true;
+    this._beamOuter.visible = qo > 0;
+    this._beamCoreGeo.setDrawRange(0, qc * 6);
+    this._beamCoreGeo.attributes.position.needsUpdate = true;
+    this._beamCoreGeo.attributes.color.needsUpdate = true;
+    this._beamCore.visible = qc > 0;
+  }
+
+  // ROUND 5 AGENT A (item #2): arcs — rebuild live arc ribbons each
+  // frame. Each arc is ARC_SEGMENTS quads along a zig-zag between its
+  // endpoints, lifted in the middle so it reads above the ground. The
+  // zig-zag offsets come from a pure arithmetic hash (no Math.random).
+  _updateArcs() {
+    const t = this.time;
+    const cam = this.camera.position;
+    let q = 0;
+    for (const slot of this.arcs) {
+      const age = t - slot.born;
+      if (slot.born < 0 || age < 0 || age > ARC_TTL) continue;
+      const fade = 1 - age / ARC_TTL;
+      const yA = terrainHeight(slot.ax, slot.az) + 1.2;
+      const yB = terrainHeight(slot.bx, slot.bz) + 1.2;
+      const dx = slot.bx - slot.ax;
+      const dz = slot.bz - slot.az;
+      const len = Math.hypot(dx, dz) || 1;
+      const px = -dz / len;
+      const pz = dx / len;
+      let prev = null;
+      for (let i = 0; i <= ARC_SEGMENTS; i += 1) {
+        const f = i / ARC_SEGMENTS;
+        let off = 0;
+        if (i > 0 && i < ARC_SEGMENTS) {
+          const h = Math.sin(slot.seed * 12.9898 + i * 78.233) * 43758.5453;
+          off = (h - Math.floor(h) - 0.5) * 2 * 0.9;
+        }
+        const pt = {
+          x: slot.ax + dx * f + px * off,
+          y: yA + (yB - yA) * f + Math.sin(f * Math.PI) * 1.2,
+          z: slot.az + dz * f + pz * off
+        };
+        if (prev) {
+          // 0.22 -> 0.32u wide: the first freeze test showed a 1.1u arc at
+          // 0.22u does not read in the still. Wider + white-gold, same
+          // additive blend (no brightness creep).
+          q = this._writeRibbonQuad(this._arcGeo, q, prev, pt, cam, 0.32 * fade, 1.0 * fade, 0.95 * fade, 0.75 * fade);
+        }
+        prev = pt;
+      }
+    }
+    this._arcGeo.setDrawRange(0, q * 6);
+    this._arcGeo.attributes.position.needsUpdate = true;
+    this._arcGeo.attributes.color.needsUpdate = true;
+    this._arcMesh.visible = q > 0;
   }
 
   _spawnMuzzle(evTime, x, z) {
@@ -1544,6 +1794,12 @@ export class Renderer {
     this.camera.lookAt(this.camTarget);
     void off;
     void dir;
+
+    // ROUND 5 AGENT A (items #1 + #2): beams + arcs AFTER the camera is
+    // positioned — both are camera-facing ribbons, so they need the final
+    // camera position for their side vectors.
+    this._updateBeams();
+    this._updateArcs();
   }
 
   render() {

@@ -399,7 +399,13 @@ function registerKill(world, enemy) {
   // ROUND 3 (item 13): the chain sound was dead code — drainAudioEvents
   // played 'chain' for a 'chain' event the sim never pushed. Every kill is
   // a chain link; the drain pitches it by the current chainMul.
-  pushEvent(world, 'chain');
+  // ROUND 5 AGENT A (item #2): the chain event now carries the kill
+  // position + chain state (OUTPUT-ONLY payload — no score, economy or
+  // staging value changes; same pattern as the 'shoot' event's x/z).
+  // The renderer uses consecutive 'chain' events to draw chain-lightning
+  // arcs between chain kills; without the position the renderer cannot
+  // know the kill order (events drain in one batch after runSteps).
+  pushEvent(world, 'chain', { x: enemy.x, z: enemy.z, chain: world.chain, chainMul: world.chainMul });
 
   const gain = world.chainMul >= 4
     ? Math.round(100 * world.chainMul * (1 + world.mods.overkillBonus))
