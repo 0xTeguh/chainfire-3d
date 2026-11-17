@@ -503,20 +503,23 @@ export function buildTerrain(scene, rng) {
   group.add(wheat);
 
   // Grass tufts: instanced crossed quads in the meadow bands (off-lane).
+  // P4 (Rizal fix): the old 0.5u-wide dark tufts read as flat cardboard
+  // squares scattered over the field. Narrower (0.35u) + fewer + brighter
+  // warm green so the field reads clean; detail only where meaningful.
   const tuftGeo = (() => {
     const v = new Float32Array([
-      -0.25, 0, 0, 0.25, 0, 0, 0.25, 0.8, 0,
-      -0.25, 0, 0, 0.25, 0.8, 0, -0.25, 0.8, 0,
-      0, 0, -0.25, 0, 0, 0.25, 0, 0.8, 0.25,
-      0, 0, -0.25, 0, 0.8, 0.25, 0, 0.8, -0.25
+      -0.175, 0, 0, 0.175, 0, 0, 0.175, 0.8, 0,
+      -0.175, 0, 0, 0.175, 0.8, 0, -0.175, 0.8, 0,
+      0, 0, -0.175, 0, 0, 0.175, 0, 0.8, 0.175,
+      0, 0, -0.175, 0, 0.8, 0.175, 0, 0.8, -0.175
     ]);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(v, 3));
     g.computeVertexNormals();
     return g;
   })();
-  const tuftCount = 300;
-  const tuftMat = new THREE.MeshStandardMaterial({ color: 0x458a48, roughness: 1, side: THREE.DoubleSide });
+  const tuftCount = 150;
+  const tuftMat = new THREE.MeshStandardMaterial({ color: 0x63a854, roughness: 1, side: THREE.DoubleSide });
   const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, tuftCount);
   for (let i = 0; i < tuftCount; i += 1) {
     let x = range(rng, -55, 55);
@@ -530,15 +533,16 @@ export function buildTerrain(scene, rng) {
     dummy.scale.setScalar(range(rng, 0.7, 1.4));
     dummy.updateMatrix();
     tufts.setMatrixAt(i, dummy.matrix);
-    cTmp.setRGB(0.85 + rng() * 0.25, 0.9 + rng() * 0.25, 0.85 + rng() * 0.2);
+    cTmp.setRGB(1.0 + rng() * 0.25, 1.05 + rng() * 0.25, 0.95 + rng() * 0.2);
     tufts.setColorAt(i, cTmp);
   }
   tufts.instanceColor.needsUpdate = true;
   group.add(tufts);
 
   // Dry-grass tufts: tan tufts for color variety in the meadow (55% pass).
-  // Per spek Mark 04:56: 60 rumpun kering.
-  const dryTuftCount = 60;
+  // Per spek Mark 04:56: 60 rumpun kering. P4: thinned to 40 with the
+  // narrower shared geometry — same flat-square complaint as the green tufts.
+  const dryTuftCount = 40;
   const dryTuftMat = new THREE.MeshStandardMaterial({ color: 0xc8a860, roughness: 1, side: THREE.DoubleSide });
   const dryTufts = new THREE.InstancedMesh(tuftGeo, dryTuftMat, dryTuftCount);
   for (let i = 0; i < dryTuftCount; i += 1) {
@@ -631,19 +635,29 @@ export function buildTerrain(scene, rng) {
   group.add(sky);
 
   const sun = new THREE.Mesh(
-    new THREE.CircleGeometry(14, 32),
-    new THREE.MeshBasicMaterial({ color: PALETTE.SUN, fog: false })
+    new THREE.CircleGeometry(8, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffc53d, fog: false })
   );
-  sun.position.set(120, 26, -60);
+  // P10 (Rizal fix): the disc was at +x (120, 26, -60) — ~70° off-axis
+  // from the title/action/draft cameras (all look toward -x), so no shot
+  // ever showed the sun. Mirrored to -x so the low disc + halo read in
+  // every backdrop. The directional light moves with it (render3d.js).
+  // Round 2: the first try (14u disc, pale gold) rendered as a giant
+  // white moon behind the title — now a smaller (8u), deeper-gold disc,
+  // lower in the sky. Warm, not blinding white.
+  // Round 3: (-135, 20, -48) landed BEHIND the new top-left title panel.
+  // (-40, 18, -130) puts it in the top-right sky of the title frame
+  // (clear of the panel) and near the top edge of the draft frame.
+  sun.position.set(-40, 18, -130);
   sun.lookAt(0, 6, 0);
   sun.name = 'sunDisc';
   group.add(sun);
 
   const halo = new THREE.Mesh(
-    new THREE.CircleGeometry(22, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffc873, transparent: true, opacity: 0.35, fog: false })
+    new THREE.CircleGeometry(13, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffa030, transparent: true, opacity: 0.45, fog: false })
   );
-  halo.position.set(120, 26, -60.5);
+  halo.position.set(-40, 18, -130.5);
   halo.lookAt(0, 6, 0);
   halo.name = 'sunHalo';
   group.add(halo);

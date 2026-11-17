@@ -48,6 +48,7 @@ let mode = 'title'; // 'title' | 'play' | 'draft' | 'results' | 'help'
 let helpReturn = 'play';
 let paused = false; // user pause (shown in the UI)
 let botPaused = false; // staging freeze (bot drives the sim; hidden from the UI)
+let renderEnabled = true; // diagnostic: the shot tool disables WebGL rendering while the bot steps 10-17k sim steps (swiftshader rasterizes every frame and saturates the CPU); renderer.update() keeps running so all visual state stays current (events drained, flashes born in sim time, popup rects exact) — only the draw is skipped. Re-enabled before the screenshot; the frozen frame is identical.
 let frozen = false; // staging freeze for title/smoke: stop stepDemo so the
 // staged frame (burning demo trail, sway, clouds, birds) is byte-identical
 // no matter when the screenshot lands — otherwise world.time advances with
@@ -355,11 +356,18 @@ function stageResults(stagedWorld) {
   // BEST comes from STAGED_PROFILE (102,250), NOT the live profile — the
   // live profile is empty in headless, which made "NEW BEST!" show even
   // for a score-0 demo world (isBest was score >= score, always true).
+  // Coherence (P11): LAST RUNS[0] IS this win run (same score/grade/wave
+  // as STAGED_PROFILE.lastRuns[0]) — but the staged record's time (212s)
+  // is from an earlier win; the live run took 212.6s, so TIME showed
+  // 03:33 while LAST RUNS showed 03:32. Use the live run's rounded time
+  // for that entry so TIME and LAST RUNS agree for the same run.
+  const lastRuns = STAGED_PROFILE.lastRuns.map((r, i) =>
+    (i === 0 && world.phase === 'won') ? { ...r, time: Math.round(world.time) } : r);
   ui.showResults(world, {
     best: Math.max(STAGED_PROFILE.best, world.score, prof.best),
     feats: { unlocked: world.featsUnlocked || [], total: 8 },
     lifetime: STAGED_PROFILE.lifetime,
-    lastRuns: STAGED_PROFILE.lastRuns
+    lastRuns
   }, world.phase === 'won');
   renderer.update(SIM.STEP_DT);
   renderer.render();
@@ -482,7 +490,7 @@ function frame(now) {
   }
   // Chrome (HUD + bottom bar) is only visible while actually playing.
   ui.setChrome(mode === 'play');
-  renderer.render();
+  if (renderEnabled) renderer.render();
 
   if (firstFrame) {
     firstFrame = false;
@@ -561,7 +569,7 @@ window.__chainfire3d = {
   // Diagnostic hook (no gameplay effect): step the sim without rendering,
   // so a bot diagnostic can reproduce a run in-page in seconds instead of
   // paying a WebGL render per step. Used by verify/x8-debug.cjs only.
-  _debug: { simUpdate: update },
+  _debug: { simUpdate: update, setRenderEnabled: (v) => { renderEnabled = !!v; } },
   STAGED_PROFILE,
   newRun: startRun,
   runSteps,
@@ -613,6 +621,7 @@ window.__chainfire3d = {
   stageResults,
   captureCharacter,
   setCameraPreset: (name) => renderer.setCameraPreset(name),
+  popupRects: () => renderer.popupRects(),
   state() {
     if (!world) return null;
     return {

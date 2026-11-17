@@ -163,8 +163,11 @@ export function buildCharacter(kind, opts = {}) {
   if (kind === 'cinderling') {
     // Small round ember creature. One big round body, oversized head,
     // glowing eyes, open mouth, ember cracks. Fast scuttle pose.
-    const skin = std(0x2b2320, { rough: 0.9 });
-    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 1.8 });
+    // P5 (Rizal fix): the old near-black skin (0x2b2320) merged with the
+    // dark field at distance — a black blob. Warmer mid-brown skin +
+    // hotter ember details so the silhouette reads hot, not black.
+    const skin = std(0x4a3226, { rough: 0.9 });
+    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.4 });
 
     legL = piv(0, 0.5 * s, 0.28 * s);
     cap(legL, 0.11 * s, 0.22 * s, skin, 0, -0.16 * s, 0);
@@ -183,7 +186,7 @@ export function buildCharacter(kind, opts = {}) {
       crack.rotation.y = range(rng, -0.25, 0.25);
     }
     // Belly glow: a warm patch low on the body so the silhouette reads hot.
-    ball(inner, 0.3 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 0.9 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
+    ball(inner, 0.3 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 1.4 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
 
     armL = piv(0, 1.5 * s, 0.78 * s, 0.25, 0, 0);
     cap(armL, 0.09 * s, 0.26 * s, skin, 0, -0.2 * s, 0);
@@ -324,9 +327,11 @@ export function buildCharacter(kind, opts = {}) {
   if (kind === 'saboteur') {
     // Hunched digger ("Fuse-Eater"): purple robe, helmet with a lamp,
     // lit fuse curving up its back, toothy grin, green glow accent.
-    const robe = std(0x5b4a8a, { rough: 0.95 });
+    // P5: the 0.75x body vanished at distance — brighter robe + bigger,
+    // hotter lamp so the telegraph reads in the wide preset.
+    const robe = std(0x6b5aa8, { rough: 0.95 });
     const dark = std(0x2e2447, { rough: 0.95 });
-    const lampMat = std(0x7ed957, { emissive: 0x4caf2a, ei: 2.0 });
+    const lampMat = std(0x7ed957, { emissive: 0x4caf2a, ei: 2.6 });
     const fuseMat = std(0x8a6a3a, { rough: 0.9 });
 
     legL = piv(0, 0.55 * s, 0.25 * s);
@@ -357,7 +362,7 @@ export function buildCharacter(kind, opts = {}) {
     const helm = ball(head, 0.45 * s, dark, 0, 0.16 * s, 0);
     helm.scale.set(1, 0.62, 1);
     cyl(head, 0.05 * s, 0.05 * s, 0.16 * s, dark, -0.42 * s, 0.22 * s, 0);
-    const lamp = box(head, 0.12 * s, 0.12 * s, 0.12 * s, lampMat, -0.5 * s, 0.26 * s, 0);
+    const lamp = box(head, 0.16 * s, 0.16 * s, 0.16 * s, lampMat, -0.5 * s, 0.26 * s, 0);
     flicker.push({ obj: lamp, kind: 'emissive', mat: lampMat, base: 2.0, amp: 0.25, speed: 7, phase: rng() * 6 });
     // Green glowing eyes.
     ball(head, 0.11 * s, std(0x7ed957, { emissive: 0x4caf2a, ei: 1.8 }), -0.38 * s, 0.06 * s, 0.16 * s);

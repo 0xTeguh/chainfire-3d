@@ -15,6 +15,7 @@ import { mulberry32 } from './rng.js';
 const POPUP_POOL = 24;
 const FLASH_POOL = 8;
 const SCORCH_POOL = 40;
+const SMOKE_POOL = 12;
 
 function makeGlowTexture() {
   const canvas = document.createElement('canvas');
@@ -32,10 +33,69 @@ function makeGlowTexture() {
   return tex;
 }
 
+// Fireball texture (P3): a shaped fireball, not a flat bright disc —
+// white-gold core, orange mid, deep-orange edge, plus six fixed flame
+// tongues around the rim. Fixed drawing = identical every load.
+function makeFireballTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(255, 244, 200, 1)');
+  grad.addColorStop(0.25, 'rgba(255, 205, 90, 0.95)');
+  grad.addColorStop(0.55, 'rgba(255, 140, 30, 0.7)');
+  grad.addColorStop(0.8, 'rgba(220, 90, 10, 0.35)');
+  grad.addColorStop(1, 'rgba(200, 60, 0, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = 'rgba(255, 150, 40, 0.45)';
+  for (const deg of [15, 75, 140, 205, 265, 330]) {
+    const a = (deg * Math.PI) / 180;
+    ctx.save();
+    ctx.translate(64 + Math.cos(a) * 42, 64 + Math.sin(a) * 42);
+    ctx.rotate(a);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 15, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Smoke texture (P3): a soft warm-gray puff — the dark counterweight to
+// the additive fire, so a blast reads as fire + smoke, not a white hole.
+function makeSmokeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
+  grad.addColorStop(0, 'rgba(120, 100, 80, 0.55)');
+  grad.addColorStop(0.5, 'rgba(100, 85, 70, 0.35)');
+  grad.addColorStop(1, 'rgba(90, 75, 60, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 const CAMERA_PRESETS = {
   game: { pos: [34, 30, 44], target: [-10, 2, 0] },
   title: { pos: [20, 27, 54], target: [-20, 4, 0] },
-  action: { pos: [30, 22, 38], target: [13, 1, 0] },
+  // P8 (Rizal fix): the old action preset [30,22,38]->[13,1,0] was a low
+  // 3/4 view — the field read flat and the Titan never appeared. EAGLE:
+  // high (34 deg down), pulled back so the whole field fits — wall +
+  // trail + chain + Titan + all 4 defenders in frame (validated in Node,
+  // verify-3d/titan-hunt.mjs: 16 enemies + Titan + 4 defenders + wall at
+  // the wave-10 x8 moment, steps 16,932). The Titan (12.8u) still reads
+  // ~155px tall; regular enemies are small but the chain is the hero.
+  action: { pos: [22, 42, 58], target: [2, 0, 0] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
 };
@@ -62,9 +122,12 @@ export class Renderer {
     this.zoom = 1;
     this.preset = 'game';
 
-    // Evening sun: low from the right (matches the sun disc in terrain.js).
+    // Evening sun: low from the left (matches the sun disc in terrain.js).
+    // P10: mirrored from +x to -x with the disc — the title/action/draft
+    // cameras all look toward -x, so the sun must live on that side or no
+    // shot ever shows it. Shadows now fall toward +x (toward the camera).
     this.sun = new THREE.DirectionalLight(0xffd9a0, 2.6);
-    this.sun.position.set(90, 42, -46);
+    this.sun.position.set(-90, 42, -46);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.left = -70;
@@ -80,6 +143,8 @@ export class Renderer {
     this.scene.add(this.hemi);
 
     this.glowTex = makeGlowTexture();
+    this.fireballTex = makeFireballTexture();
+    this.smokeTex = makeSmokeTexture();
     this.world = null;
     this.time = 0;
 
@@ -143,49 +208,60 @@ export class Renderer {
     this.scene.add(this.fireGroup);
 
     // Beacon (x8 moment): volumetric pillar + ground glow + light.
-    // The outer pillar alone (gold, opacity 0.4, additive) vanished against
-    // the bright orange sky — add a white-gold inner core (opacity 0.85)
-    // so the pillar reads as a column of light at 320px too.
+    // P3 (Rizal fix): the old 42u pillar (core 0.85 additive) + 22x22 glow
+    // burned ~30% of the frame white every time it fired. Restrained:
+    // 26u pillar, core opacity 0.5, 13u glow, weaker light — a warm gold
+    // column that reads at 320px without whiting out the subjects.
     this.beacon = new THREE.Group();
     this.beacon.visible = false;
     const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.6, 2.6, 42, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(1.1, 1.9, 26, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillar.position.y = 21;
+    pillar.position.y = 13;
     this.beacon.add(pillar);
     const pillarCore = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.7, 1.1, 42, 8, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(0.45, 0.75, 26, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillarCore.position.y = 21;
+    pillarCore.position.y = 13;
     this.beacon.add(pillarCore);
-    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
-    beaconGlow.scale.set(22, 22, 1);
+    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+    beaconGlow.scale.set(13, 13, 1);
     beaconGlow.position.y = 2;
     this.beacon.add(beaconGlow);
-    this.beaconLight = new THREE.PointLight(0xffb347, 40, 34, 1.4);
+    this.beaconLight = new THREE.PointLight(0xffb347, 24, 26, 1.4);
     this.beaconLight.position.y = 6;
     this.beacon.add(this.beaconLight);
     this.scene.add(this.beacon);
 
-    // Explosion flashes + shockwave rings (pooled).
+    // Explosion flashes + shockwave rings (pooled). P3: the flash was a
+    // uniform gold sphere — a flat white-yellow disc at peak. Now a
+    // textured fireball sprite (shaped, orange/gold, flame tongues) with a
+    // slightly thicker shockwave ring. Embers + debris come from the sim
+    // particles; smoke has its own pool below.
     this.flashes = [];
     for (let i = 0; i < FLASH_POOL; i += 1) {
-      const flash = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 14, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffc53d, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
-      );
+      const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fireballTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       flash.visible = false;
       this.scene.add(flash);
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(1, 0.22, 8, 24),
+        new THREE.TorusGeometry(1, 0.3, 8, 24),
         new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
       );
       ring.rotation.x = -Math.PI / 2;
       ring.visible = false;
       this.scene.add(ring);
       this.flashes.push({ flash, ring, t: 99, ttl: 0.5, x: 0, z: 0, maxR: 5 });
+    }
+
+    // Smoke puffs (pooled): warm gray billboards, normal blending.
+    this.smokes = [];
+    for (let i = 0; i < SMOKE_POOL; i += 1) {
+      const puff = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, transparent: true, opacity: 0, depthWrite: false }));
+      puff.visible = false;
+      this.scene.add(puff);
+      this.smokes.push({ puff, t: 99, ttl: 1.4, x: 0, z: 0, born: 0 });
     }
 
     // Scorch decals (pooled).
@@ -443,17 +519,21 @@ export class Renderer {
     if (!world || !world.events) return;
     for (const ev of world.events) {
       if (ev.type === 'boom') {
-        // Find the most recent explosion position from particles near origin.
-        this._spawnFlash(world, ev.time);
+        // Burst centroid: average of the newest particles. Computed once
+        // per event so the flash and the smoke puffs share one position.
+        const c = this._burstCentroid(world);
+        if (c) {
+          this._spawnFlash(world, ev.time, c.x, c.z);
+          this._spawnSmoke(world, ev.time, c.x, c.z);
+        }
       }
     }
     world.events.length = 0;
   }
 
-  _spawnFlash(world, evTime) {
-    // Use the latest burst centroid: average of the newest particles.
+  _burstCentroid(world) {
     const parts = world.particles;
-    if (!parts || parts.length === 0) return;
+    if (!parts || parts.length === 0) return null;
     let x = 0;
     let z = 0;
     let count = 0;
@@ -462,9 +542,11 @@ export class Renderer {
       z += parts[i].z;
       count += 1;
     }
-    if (count === 0) return;
-    x /= count;
-    z /= count;
+    if (count === 0) return null;
+    return { x: x / count, z: z / count };
+  }
+
+  _spawnFlash(world, evTime, x, z) {
     for (const slot of this.flashes) {
       if (slot.t > slot.ttl) {
         // Birth in SIM time (the event carries world.time): the flash's
@@ -486,6 +568,41 @@ export class Renderer {
     }
   }
 
+  _spawnSmoke(world, evTime, x, z) {
+    // Three puffs at fixed offsets around the burst — deterministic.
+    // Birth in SIM time, same as the flash, so a frozen staged frame is
+    // byte-identical no matter when the screenshot lands.
+    const offs = [[-1.5, 0.5], [0.8, 1.0], [1.4, -0.9]];
+    for (const [dx, dz] of offs) {
+      for (const slot of this.smokes) {
+        if (slot.t > slot.ttl) {
+          slot.born = (typeof evTime === 'number' ? evTime : this.time);
+          slot.t = this.time - slot.born;
+          slot.ttl = 1.4;
+          slot.x = x + dx;
+          slot.z = z + dz;
+          slot.puff.visible = true;
+          break;
+        }
+      }
+    }
+  }
+
+  _updateSmokes(dt) {
+    for (const slot of this.smokes) {
+      slot.t = (slot.born !== undefined) ? (this.time - slot.born) : (slot.t + dt);
+      if (slot.t > slot.ttl) {
+        slot.puff.visible = false;
+        continue;
+      }
+      const f = Math.min(1, slot.t / slot.ttl);
+      const y = terrainHeight(slot.x, slot.z) + 1 + f * 4;
+      slot.puff.position.set(slot.x, y, slot.z);
+      slot.puff.scale.setScalar(2 + f * 4);
+      slot.puff.material.opacity = 0.38 * (1 - f);
+    }
+  }
+
   _updateFlashes(dt) {
     for (const slot of this.flashes) {
       // Progress from sim time (frozen when the sim is paused/staged);
@@ -501,7 +618,7 @@ export class Renderer {
       const r = 1 + f * slot.maxR;
       slot.flash.position.set(slot.x, y, slot.z);
       slot.flash.scale.setScalar(r);
-      slot.flash.material.opacity = (1 - f) * 0.9;
+      slot.flash.material.opacity = (1 - f) * 0.85;
       slot.ring.position.set(slot.x, y + 0.2, slot.z);
       slot.ring.scale.setScalar(1 + f * slot.maxR * 1.4);
       slot.ring.material.opacity = (1 - f) * 0.8;
@@ -592,13 +709,26 @@ export class Renderer {
   _updatePopups() {
     const world = this.world;
     const list = world ? world.popups : [];
-    // Vertical slot de-confliction: sort by (x, z), stack overlapping ones.
-    // Proximity-based (not exact-position): kills 1–2u apart produce popups
-    // at nearly the same screen spot, so any popup within 2.5u of an already
-    // placed one stacks above it. (Before: only popups at the EXACT rounded
-    // (x,z) stacked, so neighbouring kills overlapped on screen.)
+    // Screen-space de-confliction: sort by (x, z), project each popup to
+    // NDC, and stack any whose screen rect overlaps an already-placed one.
+    // The old world-space proximity stack (2.5u + fixed 1.3u step) was the
+    // wrong space: a chain sprite is 9u wide, so kills 3–4u apart along the
+    // trail still overlapped on screen ("+800 x8" over "+400 x4" in the S2
+    // final), and a kill near the spawn edge projected off-frame ("+200 x2"
+    // cut at the right edge). The clamp is extent-aware: the centre is kept
+    // inside 1 - halfWidth - margin, so the whole sprite fits. A lone,
+    // in-frame popup keeps its old anchor exactly (terrain + 3.2), so it
+    // renders pixel-identical to before; only overlapping / off-frame
+    // popups move. Projection uses camPos/camTarget (set synchronously by
+    // setCameraPreset, so correct on the frozen screenshot frame even though
+    // this.camera.position lags one frame).
     const sorted = list.slice().sort((a, b) => (a.x - b.x) || (a.z - b.z));
-    const placed = [];
+    const tanV = Math.tan(((this.camera.fov || 45) / 2) * Math.PI / 180);
+    const tanH = tanV * (this.camera.aspect || 16 / 9);
+    const fwd = new THREE.Vector3().subVectors(this.camTarget, this.camPos).normalize();
+    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd);
+    const placed = []; // NDC rects {left, right, top, bottom}
     for (let i = 0; i < this.popups.length; i += 1) {
       const slot = this.popups[i];
       const popup = sorted[i];
@@ -607,15 +737,62 @@ export class Renderer {
         slot.text = null;
         continue;
       }
-      let stack = 1;
-      for (const p of placed) {
-        if (Math.abs(p.x - popup.x) < 2.5 && Math.abs(p.z - popup.z) < 2.5) stack = Math.max(stack, p.stack + 1);
-      }
-      placed.push({ x: popup.x, z: popup.z, stack });
-      const y = terrainHeight(popup.x, popup.z) + 3.2 + (stack - 1) * 1.3;
-      slot.sprite.position.set(popup.x, y, popup.z);
       const scale = (popup.size || 20) / 20;
-      slot.sprite.scale.set(9 * scale, 2.25 * scale, 1);
+      const wHalfW = (9 * scale) / 2; // world half-width of the sprite
+      const hHalfW = (2.25 * scale) / 2; // world half-height of the sprite
+      const ax = popup.x;
+      const ay = terrainHeight(popup.x, popup.z) + 3.2;
+      const az = popup.z;
+      const vx = ax - this.camPos.x;
+      const vy = ay - this.camPos.y;
+      const vz = az - this.camPos.z;
+      const zc = vx * fwd.x + vy * fwd.y + vz * fwd.z;
+      if (zc <= 0.1) {
+        // Behind the camera: the GPU culls it anyway; keep the old anchor.
+        slot.sprite.position.set(ax, ay, az);
+        slot.sprite.scale.set(9 * scale, 2.25 * scale, 1);
+      } else {
+        const xc = vx * right.x + vy * right.y + vz * right.z;
+        const yc = vx * up.x + vy * up.y + vz * up.z;
+        let ndcX = xc / (zc * tanH);
+        let ndcY = yc / (zc * tanV);
+        const hw = wHalfW / (zc * tanH);
+        const hh = hHalfW / (zc * tanV);
+        // Clamp FIRST, then stack: clamping after stacking used to drag a
+        // raised popup back onto a placed one at the frame edge — the
+        // corner pile-up the overlap checker caught (several off-frame
+        // popups all clamped to the same corner, overlapping). Clamping
+        // first keeps the stack working on the final in-frame positions.
+        // A lone, in-frame popup is untouched by the clamp (identity), so
+        // it renders pixel-identical to before.
+        const maxX = Math.max(0, 1 - hw - 0.02);
+        const maxY = Math.max(0, 1 - hh - 0.02);
+        const minY = -maxY;
+        ndcX = Math.max(-maxX, Math.min(maxX, ndcX));
+        ndcY = Math.max(minY, Math.min(maxY, ndcY));
+        // Stack above any overlapping placed rect (repeat until stable).
+        // The raise is capped at maxY so a popup never escapes the top
+        // of the frame.
+        for (let pass = 0; pass < 3; pass += 1) {
+          let raised = false;
+          for (const r of placed) {
+            if (ndcX + hw > r.left - 0.01 && ndcX - hw < r.right + 0.01
+              && ndcY + hh > r.bottom - 0.01 && ndcY - hh < r.top + 0.01) {
+              ndcY = Math.min(maxY, r.top + hh + 0.02);
+              raised = true;
+            }
+          }
+          if (!raised) break;
+        }
+        const nx = ndcX * zc * tanH;
+        const ny = ndcY * zc * tanV;
+        const px = this.camPos.x + fwd.x * zc + right.x * nx + up.x * ny;
+        const py = this.camPos.y + fwd.y * zc + right.y * nx + up.y * ny;
+        const pz = this.camPos.z + fwd.z * zc + right.z * nx + up.z * ny;
+        placed.push({ left: ndcX - hw, right: ndcX + hw, top: ndcY + hh, bottom: ndcY - hh, text: popup.text });
+        slot.sprite.position.set(px, py, pz);
+        slot.sprite.scale.set(9 * scale, 2.25 * scale, 1);
+      }
       const alpha = popup.t < popup.ttl - 0.25 ? 1 : Math.max(0, (popup.ttl - popup.t) / 0.25);
       slot.sprite.material.opacity = alpha;
       const textKey = `${popup.text}|${popup.color}`;
@@ -623,11 +800,20 @@ export class Renderer {
         slot.text = textKey;
         const ctx = slot.canvas.getContext('2d');
         ctx.clearRect(0, 0, 256, 64);
-        ctx.font = 'bold 30px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        // Fit the text to the 256px canvas: the boss popup ("CINDER TITAN
+        // DOWN! +4330", 25 chars) is ~425px at 30px and was clipped on
+        // both ends in the results frame ("ER TITAN DOWN!"). Shrink the
+        // font until it fits (min 12px); chain popups ("+800 x8 CHAIN",
+        // ~230px) already fit, so they keep 30px exactly.
+        let fontPx = 30;
+        ctx.font = `bold ${fontPx}px Arial, sans-serif`;
+        const tw = ctx.measureText(popup.text).width;
+        if (tw > 240) fontPx = Math.max(12, Math.floor(30 * 240 / tw));
+        ctx.font = `bold ${fontPx}px Arial, sans-serif`;
         const hex = `#${(popup.color || 0xffc53d).toString(16).padStart(6, '0')}`;
-        ctx.lineWidth = 6;
+        ctx.lineWidth = Math.max(2, fontPx * 0.2);
         ctx.strokeStyle = 'rgba(20, 10, 5, 0.9)';
         ctx.strokeText(popup.text, 128, 32);
         ctx.fillStyle = hex;
@@ -636,6 +822,26 @@ export class Renderer {
       }
       slot.sprite.visible = true;
     }
+    // P2: keep the final screen-space rects for the overlap checker
+    // (verify-3d/overlap-check.cjs) — it reads them via popupRects().
+    this.popupRectsCache = placed;
+  }
+
+  // P2: overlap checker hook — returns the final popup screen rects
+  // (NDC) from the last _updatePopups pass, plus every intersecting pair.
+  popupRects() {
+    const rects = (this.popupRectsCache || []).map((r) => ({ ...r }));
+    const overlaps = [];
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        const a = rects[i];
+        const b = rects[j];
+        if (a.left < b.right && a.right > b.left && a.bottom < b.top && a.top > b.bottom) {
+          overlaps.push({ a: a.text, b: b.text });
+        }
+      }
+    }
+    return { count: rects.length, rects, overlaps };
   }
 
   _updateParticles() {
@@ -778,6 +984,7 @@ export class Renderer {
     this._updateParticles();
     this._updateScorches();
     this._updateFlashes(dt);
+    this._updateSmokes(dt);
     this._updateAmbient(t);
 
     // Fire front.

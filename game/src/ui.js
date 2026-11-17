@@ -2,7 +2,7 @@
 // All text is English. Screens are DOM overlays on top of the live 3D scene
 // (the diorama behind the title is the real game world). Written fresh.
 
-import { CARD_DEFS, FEATS, POWDER_TYPES, POWDER_ORDER, DIFF_ORDER, gradeChecklist } from './data.js';
+import { CARD_DEFS, FEATS, POWDER_TYPES, POWDER_ORDER, DIFF_ORDER } from './data.js';
 
 const ROSTER_STRIP = [
   { name: 'Cinderling', color: '#ff7a1a', role: 'Fast ember' },
@@ -33,8 +33,12 @@ function el(tag, cls, text) {
 }
 
 function fmtTime(t) {
-  const m = Math.floor(t / 60);
-  const s = Math.floor(t % 60);
+  // Round FIRST, then floor-divide: the recorded run time is Math.round'd
+  // (sim.js recordRun), so a raw float here showed 07:01 for the same run
+  // whose LAST RUNS entry showed 07:02. One rounding rule everywhere.
+  const rt = Math.round(t);
+  const m = Math.floor(rt / 60);
+  const s = Math.floor(rt % 60);
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
@@ -175,6 +179,11 @@ export class UI {
   }
 
   showTitle(profile, difficulty) {
+    // P1 (Rizal fix): the old title was a 65.4%-of-frame text wall — 6 chips
+    // + 9 roster items + 5 how-to steps + 3 difficulties + PLAY + stats +
+    // controls. Now a top-left cluster (CSS .screen-title, max 600px):
+    // title + tagline, 3-step how, one goal line, the roster as ONE line,
+    // difficulty + PLAY + one stats line. The world shows through the rest.
     const screen = this.refs.screen;
     screen.innerHTML = '';
     screen.className = 'screen screen-title';
@@ -183,48 +192,36 @@ export class UI {
     const tag = el('div', 'tagline', 'DRAW THE TRAIL. LIGHT THE FUSE. CHAIN THE BLAST.');
     wrap.append(title, tag);
 
-    const chips = el('div', 'chip-row');
-    const chipData = [
-      ['GOAL', 'Stop the Ashen Horde before it breaches the fort.'],
-      ['DRAW', 'Drag to lay a powder trail. Longer trail = bigger multiplier.'],
-      ['LIGHT', 'Click LIGHT FUSE — fire runs the trail and chain-explodes raiders.'],
-      ['CHAIN', 'x2 · x4 · x8 — chain kills through kegs for the jackpot.'],
-      ['WIN', 'Survive all 10 waves and sink the Cinder Titan.'],
-      ['LOSE', 'The wall falls, or the Titan reaches the gate.']
-    ];
-    for (const [label, text] of chipData) {
-      const c = el('div', 'chip');
-      c.append(el('div', 'chip-label', label), el('div', 'chip-text', text));
-      chips.append(c);
-    }
-    wrap.append(chips);
-
-    const roster = el('div', 'roster-strip');
-    roster.append(el('div', 'roster-title', 'MEET THE HORDE — AND THE GARRISON'));
-    const row = el('div', 'roster-row');
-    for (const r of ROSTER_STRIP) {
-      const item = el('div', 'roster-item');
-      const dot = el('span', 'roster-dot');
-      dot.style.background = r.color;
-      item.append(dot, el('span', 'roster-name', r.name), el('span', 'roster-role', r.role));
-      row.append(item);
-    }
-    roster.append(row);
-    wrap.append(roster);
-
     const how = el('div', 'how-strip');
     how.append(
       el('div', 'how-step', '1 · DRAW — drag a trail through the raiders'),
       el('div', 'how-arrow', '→'),
       el('div', 'how-step', '2 · LIGHT — click LIGHT FUSE'),
       el('div', 'how-arrow', '→'),
-      el('div', 'how-step', '3 · CHAIN — fire blasts the trail + kegs'),
-      el('div', 'how-arrow', '→'),
-      el('div', 'how-step', '4 · DRAFT — pick 1 of 3 cards'),
-      el('div', 'how-arrow', '→'),
-      el('div', 'how-step', '5 · BOSS — wave 10: THE CINDER TITAN')
+      el('div', 'how-step', '3 · CHAIN — fire blasts the trail + kegs')
     );
     wrap.append(how);
+
+    wrap.append(el('div', 'goal-line', 'SURVIVE 10 WAVES — SINK THE CINDER TITAN (900 HP) ON WAVE 10'));
+
+    const rosterLine = el('div', 'roster-line');
+    rosterLine.append(el('span', 'roster-group', 'HORDE: '));
+    for (let i = 0; i < 5; i += 1) {
+      const r = ROSTER_STRIP[i];
+      const dot = el('span', 'roster-dot');
+      dot.style.background = r.color;
+      rosterLine.append(dot, el('span', 'roster-name', r.name));
+      if (i < 4) rosterLine.append(document.createTextNode(' · '));
+    }
+    rosterLine.append(el('span', 'roster-group', ' — GARRISON: '));
+    for (let i = 5; i < ROSTER_STRIP.length; i += 1) {
+      const r = ROSTER_STRIP[i];
+      const dot = el('span', 'roster-dot');
+      dot.style.background = r.color;
+      rosterLine.append(dot, el('span', 'roster-name', r.name));
+      if (i < ROSTER_STRIP.length - 1) rosterLine.append(document.createTextNode(' · '));
+    }
+    wrap.append(rosterLine);
 
     const diffRow = el('div', 'diff-row');
     for (const name of DIFF_ORDER) {
@@ -247,10 +244,6 @@ export class UI {
     const play = el('button', 'play-btn', 'PLAY');
     play.addEventListener('click', () => this.cb.onPlay());
     wrap.append(play);
-
-    const controls = el('div', 'controls-line',
-      'DRAG draw trail · CLICK LIGHT FUSE · 1/2/3 powder · WHEEL zoom · Q/E orbit · P pause · M mute · R reroll · H help');
-    wrap.append(controls);
     screen.append(wrap);
   }
 
@@ -297,6 +290,15 @@ export class UI {
   }
 
   showResults(world, profile, won) {
+    // P1 (Rizal fix): the old results panel was 70.2% of the frame — title,
+    // grade, 8 stats, a 10-bar chart, feats, last 3, build, goal, FOR S
+    // checklist, lifetime, actions. Now a middle-left cluster (CSS
+    // .screen-results, max 480px): title + grade, 8 stats (2-col), feats,
+    // last 3, ONE combined lifetime + next-goal line, actions. The chart
+    // duplicated the BLASTS stat; the build duplicates the draft shot; the
+    // FOR S checklist duplicated the grade. The fort + sky + sun show on
+    // the right ~60% of the frame. The "TITAN IS DOWN!" popup now sits
+    // behind this left panel instead of crossing the MENU button.
     const screen = this.refs.screen;
     screen.innerHTML = '';
     screen.className = 'screen screen-results';
@@ -305,7 +307,7 @@ export class UI {
     const gradeRow = el('div', 'grade-row');
     const grade = el('div', 'grade-circle', world.grade || 'C');
     const scoreBox = el('div', 'score-box');
-    const isBest = world.score >= profile.best;
+    const isBest = world.score > profile.best; // > not >=: a tie (102,250 = 102,250) is not a NEW best.
     scoreBox.append(el('div', 'score-num', Math.floor(world.score).toLocaleString('en-US')));
     scoreBox.append(el('div', 'score-label', isBest ? 'NEW BEST!' : `BEST ${Math.floor(profile.best).toLocaleString('en-US')}`));
     gradeRow.append(grade, scoreBox);
@@ -331,20 +333,6 @@ export class UI {
     }
     wrap.append(stats);
 
-    const chart = el('div', 'chart');
-    chart.append(el('div', 'chart-title', 'BLASTS PER WAVE'));
-    const chartBars = el('div', 'chart-bars');
-    const maxBlasts = Math.max(1, ...perWave.map((w) => w.blasts || 0));
-    for (const w of perWave) {
-      const bar = el('div', 'chart-bar');
-      const fill = el('div', 'chart-fill');
-      fill.style.height = `${Math.round(((w.blasts || 0) / maxBlasts) * 100)}%`;
-      bar.append(fill, el('div', 'chart-num', `${w.blasts || 0}`), el('div', 'chart-wave', `W${w.wave}`));
-      chartBars.append(bar);
-    }
-    chart.append(chartBars);
-    wrap.append(chart);
-
     const feats = el('div', 'feats-box');
     feats.append(el('div', 'feats-title', `FEATS ${world.featsUnlocked.length}/${FEATS.length}`));
     for (const feat of FEATS) {
@@ -360,21 +348,8 @@ export class UI {
     }
     wrap.append(last3);
 
-    const build = el('div', 'build-box', `BUILD: ${world.pickedCards.length > 0 ? world.pickedCards.map((id) => (CARD_DEFS.find((c) => c.id === id) || {}).name).join(' · ') : 'No cards picked'}`);
-    wrap.append(build);
-
-    const goal = el('div', 'goal-box', `NEXT GOAL: ${nextGoal(world, profile)}`);
-    wrap.append(goal);
-
-    const forS = el('div', 'fors-box');
-    forS.append(el('div', 'fors-title', 'FOR S:'));
-    for (const item of gradeChecklist(world)) {
-      forS.append(el('div', `fors-item${item.met ? ' met' : ''}`, `${item.met ? '✓' : '✗'} ${item.label}`));
-    }
-    wrap.append(forS);
-
     const lifetime = el('div', 'lifetime-box',
-      `LIFETIME: ${profile.lifetime.runsPlayed} runs · ${profile.lifetime.wins} wins · ${profile.lifetime.raidersBlown} raiders blown · biggest chain x${profile.lifetime.biggestChain >= 5 ? 8 : profile.lifetime.biggestChain >= 3 ? 4 : profile.lifetime.biggestChain >= 2 ? 2 : 1}`);
+      `LIFETIME: ${profile.lifetime.runsPlayed} runs · ${profile.lifetime.wins} wins · ${profile.lifetime.raidersBlown} raiders blown · biggest chain x${profile.lifetime.biggestChain >= 5 ? 8 : profile.lifetime.biggestChain >= 3 ? 4 : profile.lifetime.biggestChain >= 2 ? 2 : 1} — NEXT GOAL: ${nextGoal(world, profile)}`);
     wrap.append(lifetime);
 
     const actions = el('div', 'results-actions');
