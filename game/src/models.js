@@ -505,8 +505,10 @@ export function buildCharacter(kind, opts = {}) {
   if (kind === 'wren') {
     // Captain Wren: navy coat, gold epaulettes, wide-brim hat with gold
     // band (the big accessory), sword at hip, expressive face.
-    const navy = std(0x1f3a6e, { rough: 0.85 });
-    const navyDark = std(0x16294f, { rough: 0.9 });
+    // Item 4: navy brightened one step (0x1f3a6e -> 0x2a4d8f) — the dark
+    // navy read as a black blob against the wall shadow at eagle distance.
+    const navy = std(0x2a4d8f, { rough: 0.85 });
+    const navyDark = std(0x1d3560, { rough: 0.9 });
     const gold = std(0xffc53d, { rough: 0.4, metal: 0.55 });
     const skin = std(0xe8b98a, { rough: 0.7 });
 
@@ -630,6 +632,11 @@ export function buildCharacter(kind, opts = {}) {
     const white = std(0xf0ede4, { rough: 0.95 });
     const skin = std(0xd8a878, { rough: 0.75 });
     const wood = std(0x6b4a2e, { rough: 0.9 });
+    // Item 4 (defender visibility): crimson sash + cap band — Thom is the
+    // biggest defender and jumps above the parapet in celebrate, so a
+    // high-contrast red element is what reads at eagle distance. Grey coat
+    // kept (veteran identity); only the accent is bright.
+    const crimson = std(0xc03028, { rough: 0.8 });
 
     legL = piv(0, 0.95 * s, 0.24 * s);
     cap(legL, 0.14 * s, 0.6 * s, greyDark, 0, -0.35 * s, 0);
@@ -644,6 +651,9 @@ export function buildCharacter(kind, opts = {}) {
     // Collar + satchel strap.
     box(inner, 0.5 * s, 0.14 * s, 0.6 * s, white, 0, 2.08 * s, 0);
     box(inner, 0.1 * s, 1.0 * s, 0.92 * s, std(0x4a3a2e), -0.05 * s, 1.55 * s, 0, 0, 0, 0.35);
+    // Item 4: crimson sash crossing the strap (opposite diagonal, slightly
+    // proud) — the red X on the chest is Thom's high-contrast marker.
+    box(inner, 0.12 * s, 1.05 * s, 0.94 * s, crimson, -0.06 * s, 1.55 * s, 0, 0, 0, -0.35);
 
     armL = piv(0, 1.95 * s, 0.5 * s, 0.12, 0, 0);
     cap(armL, 0.13 * s, 0.5 * s, grey, 0, -0.3 * s, 0);
@@ -677,6 +687,9 @@ export function buildCharacter(kind, opts = {}) {
     box(head, 0.04 * s, 0.05 * s, 0.24 * s, std(0x8a8a8a), -0.38 * s, -0.14 * s, 0);
     // Flat cap.
     cyl(head, 0.42 * s, 0.44 * s, 0.1 * s, greyDark, 0, 0.38 * s, 0);
+    // Item 4: crimson cap band — red ring around the cap base, reads above
+    // the parapet at eagle distance.
+    cyl(head, 0.45 * s, 0.45 * s, 0.045 * s, crimson, 0, 0.33 * s, 0);
     box(head, 0.3 * s, 0.04 * s, 0.36 * s, greyDark, -0.42 * s, 0.34 * s, 0);
     // White hair at the back.
     ball(head, 0.2 * s, white, 0.3 * s, 0.1 * s, 0);
