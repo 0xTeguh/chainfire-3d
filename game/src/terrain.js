@@ -502,65 +502,102 @@ export function buildTerrain(scene, rng) {
   wheat.instanceColor.needsUpdate = true;
   group.add(wheat);
 
-  // Grass tufts: instanced crossed quads in the meadow bands (off-lane).
-  // P4 (Rizal fix): the old 0.5u-wide dark tufts read as flat cardboard
-  // squares scattered over the field. Narrower (0.35u) + fewer + brighter
-  // warm green so the field reads clean; detail only where meaningful.
-  const tuftGeo = (() => {
+  // Grass (round 2, Rizal: the thinned crossed quads still read as
+  // scattered dirt — "kek tai"). Rebuilt as REAL grass, copying the wheat
+  // recipe that already reads: tapered blades (narrow tip, never a flat
+  // rectangle), vertex-color gradient dark base -> bright lime tip,
+  // clustered in patches at the meadow-band edges (never evenly scattered),
+  // varied height, gentle sway (bases exposed for render3d._updateAmbient,
+  // same pattern as wheat). Flat dark-green quads are FORBIDDEN.
+  const makeBladeGeo = (base, tip) => {
     const v = new Float32Array([
-      -0.175, 0, 0, 0.175, 0, 0, 0.175, 0.8, 0,
-      -0.175, 0, 0, 0.175, 0.8, 0, -0.175, 0.8, 0,
-      0, 0, -0.175, 0, 0, 0.175, 0, 0.8, 0.175,
-      0, 0, -0.175, 0, 0.8, 0.175, 0, 0.8, -0.175
+      -0.08, 0, 0, 0.08, 0, 0, 0.03, 1.3, 0,
+      -0.08, 0, 0, 0.03, 1.3, 0, -0.03, 1.3, 0
+    ]);
+    const c = new Float32Array([
+      base[0], base[1], base[2], base[0], base[1], base[2], tip[0], tip[1], tip[2],
+      base[0], base[1], base[2], tip[0], tip[1], tip[2], tip[0], tip[1], tip[2]
     ]);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(v, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
     g.computeVertexNormals();
     return g;
-  })();
-  const tuftCount = 150;
-  const tuftMat = new THREE.MeshStandardMaterial({ color: 0x63a854, roughness: 1, side: THREE.DoubleSide });
-  const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, tuftCount);
-  for (let i = 0; i < tuftCount; i += 1) {
-    let x = range(rng, -55, 55);
-    let z = range(rng, -31, 31);
-    // Keep the 3 roads clear (lanes ±4) and out of the river (x 34..40).
-    if (Math.abs(z + 14.5) < 4 || Math.abs(z) < 4 || Math.abs(z - 14.5) < 4) z += (z >= 0 ? 8 : -8);
-    z = Math.max(-31, Math.min(31, z));
-    if (x > 33 && x < 41) x = x < 37 ? 33 : 41;
-    dummy.position.set(x, terrainHeight(x, z), z);
-    dummy.rotation.set(0, rng() * Math.PI, 0);
-    dummy.scale.setScalar(range(rng, 0.7, 1.4));
-    dummy.updateMatrix();
-    tufts.setMatrixAt(i, dummy.matrix);
-    cTmp.setRGB(1.0 + rng() * 0.25, 1.05 + rng() * 0.25, 0.95 + rng() * 0.2);
-    tufts.setColorAt(i, cTmp);
+  };
+  const grassGeo = makeBladeGeo([0.22, 0.38, 0.12], [0.62, 0.82, 0.28]);
+  const grassMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, vertexColors: true, roughness: 1, side: THREE.DoubleSide,
+    emissive: 0x2a4a1a, emissiveIntensity: 0.2
+  });
+  // Clusters live in the meadow bands at the lane edges — never on a road,
+  // never in the river (x 34..40), never evenly scattered.
+  const grassPatches = [
+    { x0: -28, x1: -2, z0: -30, z1: -20 },
+    { x0: 6, x1: 30, z0: 20, z1: 30 },
+    { x0: -30, x1: -8, z0: -10, z1: -5 },
+    { x0: 10, x1: 32, z0: 5, z1: 10 },
+    { x0: 42, x1: 54, z0: -30, z1: -20 }
+  ];
+  const grassCount = 200; // 40 clusters x 5 blades
+  const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+  grass.userData.isGrass = true;
+  {
+    let gi = 0;
+    for (let ci = 0; ci < 40 && gi < grassCount; ci += 1) {
+      const patch = grassPatches[ci % grassPatches.length];
+      const cx = range(rng, patch.x0, patch.x1);
+      const cz = range(rng, patch.z0, patch.z1);
+      for (let b = 0; b < 5 && gi < grassCount; b += 1, gi += 1) {
+        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.9, 0.9)));
+        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.9, 0.9)));
+        dummy.position.set(x, terrainHeight(x, z), z);
+        dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
+        dummy.scale.setScalar(range(rng, 0.9, 1.5));
+        dummy.updateMatrix();
+        grass.setMatrixAt(gi, dummy.matrix);
+        cTmp.setRGB(0.9 + rng() * 0.25, 0.95 + rng() * 0.25, 0.85 + rng() * 0.2);
+        grass.setColorAt(gi, cTmp);
+      }
+    }
   }
-  tufts.instanceColor.needsUpdate = true;
-  group.add(tufts);
+  grass.instanceColor.needsUpdate = true;
+  group.add(grass);
 
-  // Dry-grass tufts: tan tufts for color variety in the meadow (55% pass).
-  // Per spek Mark 04:56: 60 rumpun kering. P4: thinned to 40 with the
-  // narrower shared geometry — same flat-square complaint as the green tufts.
-  const dryTuftCount = 40;
-  const dryTuftMat = new THREE.MeshStandardMaterial({ color: 0xc8a860, roughness: 1, side: THREE.DoubleSide });
-  const dryTufts = new THREE.InstancedMesh(tuftGeo, dryTuftMat, dryTuftCount);
-  for (let i = 0; i < dryTuftCount; i += 1) {
-    let x = range(rng, -55, 55);
-    let z = range(rng, -31, 31);
-    if (Math.abs(z + 14.5) < 4 || Math.abs(z) < 4 || Math.abs(z - 14.5) < 4) z += (z >= 0 ? 8 : -8);
-    z = Math.max(-31, Math.min(31, z));
-    if (x > 33 && x < 41) x = x < 37 ? 33 : 41;
-    dummy.position.set(x, terrainHeight(x, z), z);
-    dummy.rotation.set(0, rng() * Math.PI, 0);
-    dummy.scale.setScalar(range(rng, 0.6, 1.2));
-    dummy.updateMatrix();
-    dryTufts.setMatrixAt(i, dummy.matrix);
-    cTmp.setRGB(0.9 + rng() * 0.2, 0.85 + rng() * 0.2, 0.75 + rng() * 0.2);
-    dryTufts.setColorAt(i, cTmp);
+  // Dry grass: same blade recipe in tan/gold (the old flat tan quads shared
+  // the failure). 40 blades in 2 patches at the field edges.
+  const dryBladeGeo = makeBladeGeo([0.45, 0.33, 0.15], [0.85, 0.7, 0.35]);
+  const dryGrassMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, vertexColors: true, roughness: 1, side: THREE.DoubleSide,
+    emissive: 0x6a4a1a, emissiveIntensity: 0.2
+  });
+  const dryPatches = [
+    { x0: -20, x1: 0, z0: 20, z1: 30 },
+    { x0: 30, x1: 52, z0: -30, z1: -22 }
+  ];
+  const dryGrassCount = 40; // 10 clusters x 4 blades
+  const dryGrass = new THREE.InstancedMesh(dryBladeGeo, dryGrassMat, dryGrassCount);
+  dryGrass.userData.isDryGrass = true;
+  {
+    let gi = 0;
+    for (let ci = 0; ci < 10 && gi < dryGrassCount; ci += 1) {
+      const patch = dryPatches[ci % dryPatches.length];
+      const cx = range(rng, patch.x0, patch.x1);
+      const cz = range(rng, patch.z0, patch.z1);
+      for (let b = 0; b < 4 && gi < dryGrassCount; b += 1, gi += 1) {
+        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.9, 0.9)));
+        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.9, 0.9)));
+        dummy.position.set(x, terrainHeight(x, z), z);
+        dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
+        dummy.scale.setScalar(range(rng, 0.8, 1.3));
+        dummy.updateMatrix();
+        dryGrass.setMatrixAt(gi, dummy.matrix);
+        cTmp.setRGB(0.9 + rng() * 0.2, 0.88 + rng() * 0.2, 0.8 + rng() * 0.2);
+        dryGrass.setColorAt(gi, cTmp);
+      }
+    }
   }
-  dryTufts.instanceColor.needsUpdate = true;
-  group.add(dryTufts);
+  dryGrass.instanceColor.needsUpdate = true;
+  group.add(dryGrass);
 
   // Wildflowers: tiny blossoms on stems, meadow bands away from the lanes.
   // Per spek Mark 04:56 (warna SEKELUARGA, dilarang geser hue): hanya
@@ -700,7 +737,7 @@ export function buildTerrain(scene, rng) {
   group.add(birds);
 
   scene.add(group);
-  return { group, wheat, clouds, birds, brickTexture: null };
+  return { group, wheat, grass, dryGrass, clouds, birds, brickTexture: null };
 }
 
 export function makeBrickTextureSeeded(seed, opts = {}) {

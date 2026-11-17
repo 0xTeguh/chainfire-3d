@@ -163,11 +163,13 @@ export function buildCharacter(kind, opts = {}) {
   if (kind === 'cinderling') {
     // Small round ember creature. One big round body, oversized head,
     // glowing eyes, open mouth, ember cracks. Fast scuttle pose.
-    // P5 (Rizal fix): the old near-black skin (0x2b2320) merged with the
-    // dark field at distance — a black blob. Warmer mid-brown skin +
-    // hotter ember details so the silhouette reads hot, not black.
-    const skin = std(0x4a3226, { rough: 0.9 });
-    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.4 });
+    // P5 (Rizal fix round 2): the round-1 warm mid-brown (0x4a3226) STILL
+    // reads as a black blob at eagle distance — Rizal: still a black blob.
+    // Lighter warm-tan skin + hotter, BIGGER ember details (cracks, belly,
+    // eyes, head tuft, mouth glow) so the creature reads hot orange-brown
+    // against the green field at 320px, not black.
+    const skin = std(0x7a4f30, { rough: 0.9 });
+    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.0 });
 
     legL = piv(0, 0.5 * s, 0.28 * s);
     cap(legL, 0.11 * s, 0.22 * s, skin, 0, -0.16 * s, 0);
@@ -186,7 +188,7 @@ export function buildCharacter(kind, opts = {}) {
       crack.rotation.y = range(rng, -0.25, 0.25);
     }
     // Belly glow: a warm patch low on the body so the silhouette reads hot.
-    ball(inner, 0.3 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 1.4 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
+    ball(inner, 0.34 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 2.0 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
 
     armL = piv(0, 1.5 * s, 0.78 * s, 0.25, 0, 0);
     cap(armL, 0.09 * s, 0.26 * s, skin, 0, -0.2 * s, 0);
@@ -196,14 +198,14 @@ export function buildCharacter(kind, opts = {}) {
     head = piv(0, 2.35 * s, 0);
     const skull = ball(head, 0.6 * s, skin, 0, 0, 0);
     parts.headMesh = skull;
-    emberEye(head, -0.48 * s, 0.1 * s, 0.24 * s, 0.15 * s);
-    emberEye(head, -0.48 * s, 0.1 * s, -0.24 * s, 0.15 * s);
+    emberEye(head, -0.48 * s, 0.1 * s, 0.24 * s, 0.18 * s);
+    emberEye(head, -0.48 * s, 0.1 * s, -0.24 * s, 0.18 * s);
     // Open mouth: dark hollow + hot glow inside.
     const mouth = ball(head, 0.17 * s, std(0x140a06, { rough: 0.7 }), -0.52 * s, -0.2 * s, 0);
     mouth.scale.set(0.4, 1, 1.25);
-    ball(head, 0.08 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 2.0 }), -0.56 * s, -0.26 * s, 0);
+    ball(head, 0.08 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 2.6 }), -0.56 * s, -0.26 * s, 0);
     // Ember tuft on top — tallest point, keeps the silhouette spiky.
-    cone(head, 0.18 * s, 0.26 * s, ember, 0, 0.68 * s, 0, 0, 0, range(rng, -0.15, 0.15));
+    cone(head, 0.24 * s, 0.36 * s, ember, 0, 0.68 * s, 0, 0, 0, range(rng, -0.15, 0.15));
   }
 
   if (kind === 'torchbearer') {

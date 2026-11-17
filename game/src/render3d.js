@@ -88,13 +88,17 @@ function makeSmokeTexture() {
 const CAMERA_PRESETS = {
   game: { pos: [34, 30, 44], target: [-10, 2, 0] },
   title: { pos: [20, 27, 54], target: [-20, 4, 0] },
-  // P8 (Rizal fix): the old action preset [30,22,38]->[13,1,0] was a low
-  // 3/4 view — the field read flat and the Titan never appeared. EAGLE:
-  // high (34 deg down), pulled back so the whole field fits — wall +
-  // trail + chain + Titan + all 4 defenders in frame (validated in Node,
-  // verify-3d/titan-hunt.mjs: 16 enemies + Titan + 4 defenders + wall at
-  // the wave-10 x8 moment, steps 16,932). The Titan (12.8u) still reads
-  // ~155px tall; regular enemies are small but the chain is the hero.
+  // P8 (Rizal fix round 2): eagle B KEEPS — [22,42,58]->[2,0,0], 34 deg down.
+  // The round-2 experiment (eagle A [15,38,52]->[-5,0,0]) FAILED capture
+  // verification: the Titan's BODY is cut at the right frame edge and the
+  // bottom-right popup clips, for only +4px on the defenders (Thom 33->37).
+  // The titan-hunt's point test said A keeps the Titan, but it tests only
+  // the Titan's CENTER — the 12.8u body extends past the frustum edge.
+  // The hunt proves no tighter preset keeps the whole Titan in frame at
+  // the first x8 moment (D/E/F/G/H/I all fail the center test; F only at
+  // later moments with fewer enemies). So B stays: Titan fully in frame
+  // (~160px), 16 enemies, Thom ~33px — and the defenders read via the
+  // celebrate pose (arms up, chainMul>=4), not via the camera.
   action: { pos: [22, 42, 58], target: [2, 0, 0] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
@@ -168,6 +172,25 @@ export class Renderer {
         this.wheatBase.push({ p: p.clone(), q: q.clone(), s: s.clone() });
       }
     }
+    // Grass + dry-grass sway bases (round 2 — same pattern as wheat).
+    this.grassBase = [];
+    this.dryGrassBase = [];
+    {
+      const m = new THREE.Matrix4();
+      const p = new THREE.Vector3();
+      const q = new THREE.Quaternion();
+      const s = new THREE.Vector3();
+      for (let i = 0; i < env.grass.count; i += 1) {
+        env.grass.getMatrixAt(i, m);
+        m.decompose(p, q, s);
+        this.grassBase.push({ p: p.clone(), q: q.clone(), s: s.clone() });
+      }
+      for (let i = 0; i < env.dryGrass.count; i += 1) {
+        env.dryGrass.getMatrixAt(i, m);
+        m.decompose(p, q, s);
+        this.dryGrassBase.push({ p: p.clone(), q: q.clone(), s: s.clone() });
+      }
+    }
     // Cloud bases.
     this.cloudBase = env.clouds.children.map((c) => ({ x: c.position.x, y: c.position.y, z: c.position.z, drift: c.userData.drift }));
 
@@ -208,29 +231,30 @@ export class Renderer {
     this.scene.add(this.fireGroup);
 
     // Beacon (x8 moment): volumetric pillar + ground glow + light.
-    // P3 (Rizal fix): the old 42u pillar (core 0.85 additive) + 22x22 glow
-    // burned ~30% of the frame white every time it fired. Restrained:
-    // 26u pillar, core opacity 0.5, 13u glow, weaker light — a warm gold
-    // column that reads at 320px without whiting out the subjects.
+    // P3 (Rizal fix round 2): the 26u pillar (core 0.5) + 13u glow STILL
+    // washed a ~30%-wide band of the right frame (mean brightness ~175 vs
+    // ~90-118 beside it, measured on the round-1 action shot). Shrunk
+    // again: 16u pillar, core opacity 0.35, 8u glow, weaker light — a warm
+    // gold column that reads at 320px without whiting out the subjects.
     this.beacon = new THREE.Group();
     this.beacon.visible = false;
     const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.1, 1.9, 26, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(0.8, 1.4, 16, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillar.position.y = 13;
+    pillar.position.y = 8;
     this.beacon.add(pillar);
     const pillarCore = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.45, 0.75, 26, 8, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+      new THREE.CylinderGeometry(0.35, 0.6, 16, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
     );
-    pillarCore.position.y = 13;
+    pillarCore.position.y = 8;
     this.beacon.add(pillarCore);
-    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
-    beaconGlow.scale.set(13, 13, 1);
+    const beaconGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffc53d, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    beaconGlow.scale.set(8, 8, 1);
     beaconGlow.position.y = 2;
     this.beacon.add(beaconGlow);
-    this.beaconLight = new THREE.PointLight(0xffb347, 24, 26, 1.4);
+    this.beaconLight = new THREE.PointLight(0xffb347, 14, 18, 1.4);
     this.beaconLight.position.y = 6;
     this.beacon.add(this.beaconLight);
     this.scene.add(this.beacon);
@@ -919,7 +943,12 @@ export class Renderer {
       if (phase === 'won') { anim = 'celebrate'; expr = 'cheer'; }
       else if (phase === 'lost') { anim = 'dead'; expr = 'worried'; }
       else if (world.wallHp / world.wallMax < 0.4) { expr = 'worried'; }
-      else if (world.chainMul >= 4) { expr = 'cheer'; }
+      // Round 2 (P6): defenders CHEER with arms up while a big chain runs —
+      // the idle breathe (±3%) was invisible at eagle distance, so from a
+      // still they read as statues. The celebrate pose (arms up + jump) is
+      // a pure function of world.time, so it stays deterministic, and it
+      // makes the defenders readable on the wall at the x8 moment.
+      else if (world.chainMul >= 4) { anim = 'celebrate'; expr = 'cheer'; }
       def.setPose(anim, world.time, { expression: expr });
     }
     // Wall damage visual.
@@ -942,6 +971,32 @@ export class Renderer {
       wheat.setMatrixAt(i, this._dummy.matrix);
     }
     wheat.instanceMatrix.needsUpdate = true;
+    // Grass + dry-grass sway (round 2 — same pattern, slightly larger
+    // amplitude so the blades visibly breathe; phase offsets differ).
+    const grass = this.env.grass;
+    for (let i = 0; i < this.grassBase.length; i += 1) {
+      const base = this.grassBase[i];
+      const sway = Math.sin(t * 1.3 + i * 0.6180339 + 1.3) * 0.09;
+      this._dummy.position.copy(base.p);
+      this._dummy.quaternion.copy(base.q);
+      this._dummy.rotateZ(sway);
+      this._dummy.scale.copy(base.s);
+      this._dummy.updateMatrix();
+      grass.setMatrixAt(i, this._dummy.matrix);
+    }
+    grass.instanceMatrix.needsUpdate = true;
+    const dryGrass = this.env.dryGrass;
+    for (let i = 0; i < this.dryGrassBase.length; i += 1) {
+      const base = this.dryGrassBase[i];
+      const sway = Math.sin(t * 1.3 + i * 0.6180339 + 2.9) * 0.09;
+      this._dummy.position.copy(base.p);
+      this._dummy.quaternion.copy(base.q);
+      this._dummy.rotateZ(sway);
+      this._dummy.scale.copy(base.s);
+      this._dummy.updateMatrix();
+      dryGrass.setMatrixAt(i, this._dummy.matrix);
+    }
+    dryGrass.instanceMatrix.needsUpdate = true;
     // Clouds drift (wrap around).
     for (let i = 0; i < this.env.clouds.children.length; i += 1) {
       const cloud = this.env.clouds.children[i];
