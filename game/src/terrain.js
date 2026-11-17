@@ -502,17 +502,19 @@ export function buildTerrain(scene, rng) {
   wheat.instanceColor.needsUpdate = true;
   group.add(wheat);
 
-  // Grass (round 2, Rizal: the thinned crossed quads still read as
-  // scattered dirt — "kek tai"). Rebuilt as REAL grass, copying the wheat
-  // recipe that already reads: tapered blades (narrow tip, never a flat
-  // rectangle), vertex-color gradient dark base -> bright lime tip,
-  // clustered in patches at the meadow-band edges (never evenly scattered),
-  // varied height, gentle sway (bases exposed for render3d._updateAmbient,
-  // same pattern as wheat). Flat dark-green quads are FORBIDDEN.
+  // Grass (ITEM 1, trust repair: round-2 blades FAILED the human
+  // side-by-side — at eagle distance (68u, 34 deg down) a 1.3u blade
+  // projects as a 2x17px DARK scratch, so the field still read as the
+  // same dark rectangles in the same places. New recipe: TALLER blades
+  // (2.8u — reads as a tuft at full size AND at 320px), BRIGHTER overall
+  // (mid-green base, never dark — the dark base is what read as dirt),
+  // WIDER (0.32u base), DENSER clusters (10 blades per tuft, 60 tufts),
+  // still clustered at the meadow-band edges, never evenly scattered,
+  // never on roads/river. Flat dark-green quads are FORBIDDEN.
   const makeBladeGeo = (base, tip) => {
     const v = new Float32Array([
-      -0.08, 0, 0, 0.08, 0, 0, 0.03, 1.3, 0,
-      -0.08, 0, 0, 0.03, 1.3, 0, -0.03, 1.3, 0
+      -0.16, 0, 0, 0.16, 0, 0, 0.05, 2.8, 0,
+      -0.16, 0, 0, 0.05, 2.8, 0, -0.05, 2.8, 0
     ]);
     const c = new Float32Array([
       base[0], base[1], base[2], base[0], base[1], base[2], tip[0], tip[1], tip[2],
@@ -524,10 +526,10 @@ export function buildTerrain(scene, rng) {
     g.computeVertexNormals();
     return g;
   };
-  const grassGeo = makeBladeGeo([0.22, 0.38, 0.12], [0.62, 0.82, 0.28]);
+  const grassGeo = makeBladeGeo([0.42, 0.62, 0.20], [0.80, 0.96, 0.45]);
   const grassMat = new THREE.MeshStandardMaterial({
     color: 0xffffff, vertexColors: true, roughness: 1, side: THREE.DoubleSide,
-    emissive: 0x2a4a1a, emissiveIntensity: 0.2
+    emissive: 0x3a5a22, emissiveIntensity: 0.25
   });
   // Clusters live in the meadow bands at the lane edges — never on a road,
   // never in the river (x 34..40), never evenly scattered.
@@ -538,21 +540,21 @@ export function buildTerrain(scene, rng) {
     { x0: 10, x1: 32, z0: 5, z1: 10 },
     { x0: 42, x1: 54, z0: -30, z1: -20 }
   ];
-  const grassCount = 200; // 40 clusters x 5 blades
+  const grassCount = 600; // 60 clusters x 10 blades (ITEM 1: dense tufts)
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   grass.userData.isGrass = true;
   {
     let gi = 0;
-    for (let ci = 0; ci < 40 && gi < grassCount; ci += 1) {
+    for (let ci = 0; ci < 60 && gi < grassCount; ci += 1) {
       const patch = grassPatches[ci % grassPatches.length];
       const cx = range(rng, patch.x0, patch.x1);
       const cz = range(rng, patch.z0, patch.z1);
-      for (let b = 0; b < 5 && gi < grassCount; b += 1, gi += 1) {
-        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.9, 0.9)));
-        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.9, 0.9)));
+      for (let b = 0; b < 10 && gi < grassCount; b += 1, gi += 1) {
+        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.8, 0.8)));
+        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.8, 0.8)));
         dummy.position.set(x, terrainHeight(x, z), z);
         dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
-        dummy.scale.setScalar(range(rng, 0.9, 1.5));
+        dummy.scale.setScalar(range(rng, 0.9, 1.25));
         dummy.updateMatrix();
         grass.setMatrixAt(gi, dummy.matrix);
         cTmp.setRGB(0.9 + rng() * 0.25, 0.95 + rng() * 0.25, 0.85 + rng() * 0.2);
@@ -563,9 +565,10 @@ export function buildTerrain(scene, rng) {
   grass.instanceColor.needsUpdate = true;
   group.add(grass);
 
-  // Dry grass: same blade recipe in tan/gold (the old flat tan quads shared
-  // the failure). 40 blades in 2 patches at the field edges.
-  const dryBladeGeo = makeBladeGeo([0.45, 0.33, 0.15], [0.85, 0.7, 0.35]);
+  // Dry grass: same blade recipe in tan/gold (ITEM 1: same taller/brighter
+  // rebuild — the old 1.3u tan blades were the same speck failure).
+  // 60 blades in 2 patches at the field edges.
+  const dryBladeGeo = makeBladeGeo([0.55, 0.42, 0.18], [0.90, 0.78, 0.42]);
   const dryGrassMat = new THREE.MeshStandardMaterial({
     color: 0xffffff, vertexColors: true, roughness: 1, side: THREE.DoubleSide,
     emissive: 0x6a4a1a, emissiveIntensity: 0.2
@@ -574,7 +577,7 @@ export function buildTerrain(scene, rng) {
     { x0: -20, x1: 0, z0: 20, z1: 30 },
     { x0: 30, x1: 52, z0: -30, z1: -22 }
   ];
-  const dryGrassCount = 40; // 10 clusters x 4 blades
+  const dryGrassCount = 60; // 10 clusters x 6 blades
   const dryGrass = new THREE.InstancedMesh(dryBladeGeo, dryGrassMat, dryGrassCount);
   dryGrass.userData.isDryGrass = true;
   {
@@ -583,12 +586,12 @@ export function buildTerrain(scene, rng) {
       const patch = dryPatches[ci % dryPatches.length];
       const cx = range(rng, patch.x0, patch.x1);
       const cz = range(rng, patch.z0, patch.z1);
-      for (let b = 0; b < 4 && gi < dryGrassCount; b += 1, gi += 1) {
-        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.9, 0.9)));
-        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.9, 0.9)));
+      for (let b = 0; b < 6 && gi < dryGrassCount; b += 1, gi += 1) {
+        const x = Math.max(-55, Math.min(55, cx + range(rng, -0.8, 0.8)));
+        const z = Math.max(-31, Math.min(31, cz + range(rng, -0.8, 0.8)));
         dummy.position.set(x, terrainHeight(x, z), z);
         dummy.rotation.set(range(rng, -0.12, 0.12), rng() * Math.PI, range(rng, -0.12, 0.12));
-        dummy.scale.setScalar(range(rng, 0.8, 1.3));
+        dummy.scale.setScalar(range(rng, 0.9, 1.25));
         dummy.updateMatrix();
         dryGrass.setMatrixAt(gi, dummy.matrix);
         cTmp.setRGB(0.9 + rng() * 0.2, 0.88 + rng() * 0.2, 0.8 + rng() * 0.2);
