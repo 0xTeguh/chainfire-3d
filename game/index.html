@@ -65,13 +65,17 @@
   .screen-title { align-items: flex-start; justify-content: flex-start; padding: 20px 0 0 24px; }
   .screen-results { align-items: center; justify-content: flex-start; padding: 12px 0 12px 24px; }
   .title-wrap, .draft-wrap, .results-wrap, .help-wrap { background: rgba(18, 14, 8, 0.70); border: 2px solid rgba(255, 197, 61, 0.6); border-radius: 14px; padding: 14px 20px; max-width: 1020px; width: 100%; color: #f5e6c8; }
-  .title-wrap { max-width: 600px; background: rgba(18, 14, 8, 0.62); }
+  .title-wrap { max-width: 560px; background: rgba(18, 14, 8, 0.45); padding: 10px 18px; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+  /* ROUND 4 AGENT D (item 11): the draft backdrop was hidden behind a
+     0.70-alpha panel — 0.52 lets the fort + field show through; the
+     text-shadow keeps the cards legible over the bright world. */
+  .draft-wrap { background: rgba(18, 14, 8, 0.52); text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
   .results-wrap { max-width: 480px; background: rgba(18, 14, 8, 0.62); }
   .results-wrap .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .game-title { font-size: 44px; font-weight: 900; letter-spacing: 4px; color: #ffc53d; text-align: center; text-shadow: 0 0 24px rgba(255, 180, 60, 0.6), 0 3px 0 #7a4a00; line-height: 1; }
-  .tagline { text-align: center; font-size: 15px; font-weight: bold; color: #ffe9a8; margin: 8px 0 12px; letter-spacing: 1px; }
-  .goal-line { text-align: center; font-size: 13px; font-weight: 900; color: #ffe9a8; margin-bottom: 10px; letter-spacing: 0.5px; }
-  .roster-line { font-size: 12px; line-height: 1.7; color: #c8b898; margin-bottom: 12px; text-align: center; }
+  .game-title { font-size: 40px; font-weight: 900; letter-spacing: 4px; color: #ffc53d; text-align: center; text-shadow: 0 0 24px rgba(255, 180, 60, 0.6), 0 3px 0 #7a4a00; line-height: 1; }
+  .tagline { text-align: center; font-size: 15px; font-weight: bold; color: #ffe9a8; margin: 6px 0 9px; letter-spacing: 1px; }
+  .goal-line { text-align: center; font-size: 13px; font-weight: 900; color: #ffe9a8; margin-bottom: 8px; letter-spacing: 0.5px; }
+  .roster-line { font-size: 13px; line-height: 1.7; color: #c8b898; margin-bottom: 9px; text-align: center; }
   .roster-line .roster-group { color: #ffc53d; font-weight: 900; letter-spacing: 1px; }
   .roster-line .roster-name { font-weight: bold; color: #f5e6c8; }
   .chip-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
@@ -88,12 +92,12 @@
   .how-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 12px; font-size: 13px; }
   .how-step { background: rgba(255, 122, 26, 0.15); border: 1px solid rgba(255, 122, 26, 0.5); border-radius: 6px; padding: 5px 8px; font-weight: bold; }
   .how-arrow { color: #ffc53d; font-weight: bold; }
-  .diff-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+  .diff-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
   .diff-btn { background: rgba(255,255,255,0.07); color: #f5e6c8; border: 2px solid rgba(255,197,61,0.4); border-radius: 8px; padding: 8px 18px; font-size: 14px; font-weight: bold; cursor: pointer; }
   .diff-btn.active { background: #ffc53d; color: #1a120c; }
-  .title-stats { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; font-size: 13px; font-weight: bold; color: #ffe9a8; margin-bottom: 12px; }
+  .title-stats { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; font-size: 13px; font-weight: bold; color: #ffe9a8; margin-bottom: 9px; }
   .play-btn { display: block; margin: 0 auto; background: #e85d26; color: #fff; border: 2px solid #ffd23f; border-radius: 10px; padding: 12px 48px; font-size: 22px; font-weight: 900; cursor: pointer; }
-  .controls-line { text-align: center; font-size: 12px; color: #c8b898; margin-top: 12px; }
+  .controls-line { text-align: center; font-size: 12px; color: #c8b898; margin-top: 9px; }
   .draft-title, .results-title, .help-title { font-size: 26px; font-weight: 900; color: #ffc53d; text-align: center; margin-bottom: 10px; }
   .draft-context { text-align: center; font-size: 13px; color: #ffe9a8; margin-bottom: 12px; }
   .card-row { display: flex; gap: 10px; justify-content: center; }
@@ -106,7 +110,7 @@
   .card-new { position: absolute; top: 8px; right: 8px; background: #e85d26; color: #fff; font-size: 11px; font-weight: 900; border-radius: 4px; padding: 2px 6px; }
   .card-name { font-size: 18px; font-weight: 900; margin: 6px 0 4px; }
   .card-effect { font-size: 15px; font-weight: bold; color: #ffe9a8; }
-  .card-synergy { font-size: 12px; color: #c8b898; margin-top: 6px; line-height: 1.4; }
+  .card-synergy { font-size: 14px; color: #e6d9b8; margin-top: 6px; line-height: 1.45; }
   .card-cost { font-size: 13px; font-weight: 900; color: #ffc53d; margin-top: 8px; }
   .draft-actions { display: flex; gap: 10px; justify-content: center; margin: 14px 0 8px; }
   .draft-btn { background: rgba(255,255,255,0.08); color: #f5e6c8; border: 1px solid rgba(255,197,61,0.5); border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: bold; cursor: pointer; }
@@ -131,7 +135,7 @@
   .feats-title, .last3-title, .fors-title { font-size: 12px; font-weight: 900; color: #ffc53d; letter-spacing: 1px; }
   .feat.got { color: #7ed957; font-weight: bold; }
   .fors-item.met { color: #7ed957; }
-  .results-actions { display: flex; gap: 10px; justify-content: center; margin-top: 6px; }
+  .results-actions { display: flex; gap: 10px; justify-content: center; margin-top: 4px; }
   .help-row { display: flex; gap: 12px; margin-bottom: 8px; font-size: 14px; line-height: 1.4; }
   .help-key { min-width: 210px; font-weight: 900; color: #ffc53d; }
   /* ROUND 3 AGENT D — HUD additions (items 2, 3, 6, 7). */
@@ -167,14 +171,14 @@
   .event-banner { position: absolute; top: 38vh; left: 50%; transform: translateX(-50%); font-size: 56px; font-weight: 900; letter-spacing: 3px; color: #ffd23f; text-shadow: 0 0 18px rgba(255, 140, 30, 0.8), 0 3px 0 #7a4a00, 0 2px 8px rgba(0,0,0,0.8); white-space: nowrap; pointer-events: none; z-index: 7; }
   /* ROUND 3 AGENT D — title: how-to cards with diagrams (item 10) +
      THREAT → ANSWER roster (item 5). */
-  .how-strip { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+  .how-strip { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
   .how-card { flex: 1; background: rgba(255, 122, 26, 0.12); border: 1px solid rgba(255, 122, 26, 0.45); border-radius: 8px; padding: 6px 8px 7px; text-align: center; }
-  .how-diagram { height: 28px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+  .how-diagram { height: 24px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
   .how-card-title { font-size: 12px; font-weight: 900; color: #ffc53d; letter-spacing: 0.5px; }
   .how-card-text { font-size: 11px; line-height: 1.3; color: #f5e6c8; margin-top: 1px; }
-  .threat-table { margin-bottom: 10px; }
+  .threat-table { margin-bottom: 8px; }
   .threat-table-title { color: #ffc53d; font-size: 11px; font-weight: 900; letter-spacing: 1px; text-align: center; margin-bottom: 4px; }
-  .threat-table-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.55; }
+  .threat-table-row { display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 1.45; }
   .threat-table-name { font-weight: 900; color: #f5e6c8; white-space: nowrap; }
   .threat-table-behavior { color: #c8b898; }
   .threat-table-arrow { color: #ffc53d; font-weight: 900; }
@@ -191,7 +195,7 @@
   /* ROUND 3 AGENT D — results: golden-hour gradient backdrop + NEW BEST
      badge (item 8). */
   .results-wrap { background: linear-gradient(160deg, rgba(74, 38, 10, 0.82), rgba(46, 22, 52, 0.78)); }
-  .new-best-badge { background: #7ed957; color: #1a120c; border-radius: 4px; padding: 2px 8px; display: inline-block; }
+  .new-best-badge { background: #7ed957; color: #1a120c; border-radius: 4px; padding: 4px 12px; display: inline-block; font-size: 15px; font-weight: 900; }
   @media (max-width: 760px) {
     .game-title { font-size: 40px; }
     .chip-row { grid-template-columns: repeat(2, 1fr); }
@@ -209,23 +213,29 @@
   }
   /* Results panel compaction (must fit 720px viewport; was 918px tall):
      these rules sit last so they win over the base rules above. */
-  .results-wrap { padding: 10px 20px; }
-  .results-title { font-size: 22px; margin-bottom: 6px; }
-  .grade-row { margin-bottom: 8px; }
-  .grade-circle { width: 64px; height: 64px; font-size: 40px; }
-  .score-num { font-size: 30px; }
-  .stat-grid { margin-bottom: 8px; }
-  .stat-cell { padding: 4px; }
+  /* ROUND 4 AGENT D (items 12+E3): GRADE S + NEW BEST dominant and the
+     per-wave chart thicker — the payoff must read at a glance. Grade
+     circle 64→80px, score 30→36px, badge 14→15px, chart bars 42→58px
+     with 13px numbers. The panel was already at the 696px limit, so
+     every added px is paid for by tightening (title 22→20px, stat
+     padding 4→3px, feats/last3 line-height 1.3/1.4→1.2/1.3, margins). */
+  .results-wrap { padding: 8px 20px; }
+  .results-title { font-size: 20px; margin-bottom: 4px; }
+  .grade-row { margin-bottom: 6px; }
+  .grade-circle { width: 80px; height: 80px; font-size: 50px; }
+  .score-num { font-size: 36px; }
+  .stat-grid { margin-bottom: 6px; }
+  .stat-cell { padding: 3px; }
   .stat-value { font-size: 14px; }
-  .chart { margin-bottom: 6px; }
-  .chart-title { font-size: 11px; margin-bottom: 2px; }
-  .chart-bars { height: 42px; }
-  .chart-num { font-size: 10px; }
-  .chart-wave { font-size: 9px; }
+  .chart { margin-bottom: 4px; }
+  .chart-title { font-size: 12px; margin-bottom: 3px; }
+  .chart-bars { height: 58px; }
+  .chart-num { font-size: 13px; font-weight: 900; }
+  .chart-wave { font-size: 10px; }
   .chart-fill-wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; min-height: 0; }
-  .feats-box, .last3-box, .build-box, .goal-box, .fors-box, .lifetime-box { margin-bottom: 6px; line-height: 1.4; }
-  .feats-box { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; font-size: 12px; line-height: 1.3; }
-  .feats-box, .last3-box, .build-box, .goal-box, .fors-box, .lifetime-box { margin-bottom: 6px; line-height: 1.4; }
+  .feats-box, .last3-box, .build-box, .goal-box, .fors-box, .lifetime-box { margin-bottom: 5px; line-height: 1.3; }
+  .feats-box { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; font-size: 12px; line-height: 1.2; }
+  .feats-box, .last3-box, .build-box, .goal-box, .fors-box, .lifetime-box { margin-bottom: 5px; line-height: 1.3; }
   .feats-box { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
   .feats-title { grid-column: 1 / -1; }
   .fors-box { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
