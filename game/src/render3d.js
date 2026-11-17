@@ -145,7 +145,40 @@ const CAMERA_PRESETS = {
   // dramatic one. If Mark still says "sama aja", the next lever is NOT
   // more zoom — it is a different camera angle (wall-side shot, Titan
   // trades out) or a re-staged freeze moment. C10 it is, cut disclosed.
-  action: { pos: [17.1, 35.1, 48.6], target: [0, 0, 0] },
+  //
+  // ROUND 4 AGENT A (Mark 00:51 WIB 18 Nov, items 1-3: defenders big,
+  // crowded frame, Titan whole+dominant). Probed 9 cameras on the SAME
+  // frozen x8 state (steps 16050, the ONLY x8 moment — r4a-hunt.cjs found
+  // exactly 1 cluster-x8 moment in the titan run, and r4a-hunt-win.cjs
+  // found the win run's x8 moments are unusable: alive 0-4, bossX 47-48,
+  // defenders never fired — so the freeze moment is FIXED, camera only).
+  // The wall-side angle FAILED as built: WA/WB/WD/XW/XL (x -35..-15, low)
+  // put the Titan BEHIND the THREAT QUEUE panel (DOM, invisible to the
+  // frustum math) and edge-cut, defenders at the extreme left edge, the
+  // trail foreshortened along the bottom edge, big empty green foreground.
+  // Frustum math alone cannot see DOM occlusion — every candidate was
+  // VIEWED, not just computed.
+  // WC [15,22,64]->[0,2,4] WINS (r4a-cam-probe.cjs, viewed side-by-side
+  // vs C10, proof-r4a/wc-cmp-*.jpg): Titan WHOLE with ~140px right margin
+  // (2x titan crop proves the full silhouette: head, shoulders, furnace
+  // ring, platform — C10's right shoulder is sliced), still ~163px tall
+  // (dominant — biggest subject in frame); defenders essentially the SAME
+  // size as C10 (within 2-3px: wren 40 vs 43, thom 47 vs 49, mira 46 vs
+  // 47 — not bigger, the wall is just more prominent on the left); 10
+  // enemies in frame vs C10's 7; the burning trail reads as a clear orange
+  // ribbon across the mid-frame; the sun disc is visible top-centre (helps
+  // Agent B's E2). EH [20,28,64] was the runner-up — nearly identical, but
+  // the Titan sits closer to the right edge. Numbers UNCHANGED (same frozen state: 59,550 / 69,650).
+  // Honest limit: the parapet hides the defenders' lower bodies from any
+  // camera that also keeps the Titan in frame, so visible defender height
+  // stays ~30px at full size (they read via celebrate pose + muzzle glow
+  // + tracers, not as full characters) — the 76u wall-to-Titan span vs the
+  // 72 deg frame makes a bigger defender + whole Titan geometrically
+  // impossible at this freeze moment; a truly big defender needs a
+  // different freeze moment (Titan near the wall), which does not exist
+  // under the x8 constraint. Item 1 is a modest win, item 2 a modest win,
+  // item 3 a clear win.
+  action: { pos: [15, 22, 64], target: [0, 2, 4] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
 };
