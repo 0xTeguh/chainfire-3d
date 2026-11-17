@@ -396,6 +396,10 @@ function registerKill(world, enemy) {
   world.chainTimer = window_;
   world.chainMul = chainMultiplier(world.chain);
   if (world.chain > world.longestChain) world.longestChain = world.chain;
+  // ROUND 3 (item 13): the chain sound was dead code — drainAudioEvents
+  // played 'chain' for a 'chain' event the sim never pushed. Every kill is
+  // a chain link; the drain pitches it by the current chainMul.
+  pushEvent(world, 'chain');
 
   const gain = world.chainMul >= 4
     ? Math.round(100 * world.chainMul * (1 + world.mods.overkillBonus))

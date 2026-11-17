@@ -570,6 +570,10 @@ export function createAudio() {
     unlock,
     setMuted,
     isMuted,
+    // Diagnostic (read-only): the AudioContext state, so a headless probe can
+    // prove the context was actually running (tones scheduled), not merely
+    // that play() was called. ROUND 3 (item 13).
+    state: () => (ctx ? ctx.state : 'none'),
     play,
     startAmbient,
     stopAmbient,

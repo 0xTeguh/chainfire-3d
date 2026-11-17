@@ -75,7 +75,7 @@ const ui = new UI(
   { hud: document.getElementById('hud'), bottom: document.getElementById('bottom'), screen: document.getElementById('screen'), toast: document.getElementById('toast') },
   {
     onPlay: () => startRun(difficulty, SEED),
-    onDifficulty: (name) => { difficulty = name; ui.showTitle(profile, difficulty); },
+    onDifficulty: (name) => { audio.unlock(); audio.play('click'); difficulty = name; ui.showTitle(profile, difficulty); },
     onLightFuse: () => { if (world) lightTrail(world); },
     onPause: () => togglePause(),
     onMute: () => toggleMute(),
@@ -97,6 +97,9 @@ const ui = new UI(
     onReroll: () => {
       if (!world) return;
       if (mode === 'draft') {
+        // ROUND 3 (item 13): UI click sound (the results branch is covered
+        // by startRun below — do not double-play).
+        audio.play('click');
         if (rerollDraft(world)) ui.showDraft(world, profile);
       } else if (mode === 'results') {
         startRun(difficulty, SEED);
@@ -104,12 +107,13 @@ const ui = new UI(
     },
     onSkipDraft: () => {
       if (!world) return;
+      audio.play('click'); // ROUND 3 (item 13): UI click sound.
       world.draft = null;
       mode = 'play';
       ui.hideScreens();
     },
     onNewRun: () => startRun(difficulty, SEED),
-    onMenu: () => { mode = 'title'; showTitle(); }
+    onMenu: () => { audio.play('click'); mode = 'title'; showTitle(); } // ROUND 3 (item 13): UI click sound.
   }
 );
 
@@ -155,6 +159,7 @@ const input = createInput(canvas, renderer, {
 });
 
 function toggleMute() {
+  audio.play('click'); // ROUND 3 (item 13): UI click sound (plays while still unmuted; no-ops when muted).
   audio.unlock();
   audio.setMuted(!audio.isMuted());
   ui.setMuted(audio.isMuted());
@@ -162,12 +167,14 @@ function toggleMute() {
 
 function togglePause() {
   if (mode !== 'play') return;
+  audio.play('click'); // ROUND 3 (item 13): UI click sound.
   paused = !paused;
   ui.toast(paused ? 'PAUSED' : 'RESUMED');
 }
 
 function showHelp() {
-  if (mode === 'help') { closeHelp(); return; }
+  if (mode === 'help') { closeHelp(); return; } // closeHelp plays the click — do not double-play.
+  audio.play('click'); // ROUND 3 (item 13): UI click sound.
   helpReturn = mode;
   mode = 'help';
   ui.showHelp();
@@ -175,6 +182,7 @@ function showHelp() {
 
 function closeHelp() {
   if (mode !== 'help') return;
+  audio.play('click'); // ROUND 3 (item 13): UI click sound.
   mode = helpReturn;
   if (mode === 'title') showTitle();
   else ui.hideScreens();
@@ -243,6 +251,10 @@ function startRun(diffName, seed) {
   ui.hideScreens();
   ui.bark('waveStart', 0);
   audio.unlock();
+  // ROUND 3 (item 13): UI click sound (PLAY / NEW RUN / reroll-in-results).
+  // AFTER unlock(): on the first PLAY the context does not exist yet, so a
+  // play() before unlock() would early-return silently.
+  audio.play('click');
   audio.startAmbient();
   audio.setMusicMood('calm');
   input.setEnabled(true);
@@ -251,6 +263,13 @@ function startRun(diffName, seed) {
 function drainAudioEvents() {
   if (!world || !world.events) return;
   for (const ev of world.events) {
+    // ROUND 3 (item 13): the drain runs once per sim step, but the renderer
+    // only clears the list once per frame — inside a runSteps() batch (or a
+    // multi-step frame under lag) every event replayed once per step, so one
+    // explosion sounded hundreds of times. Mark each event played; the
+    // renderer still consumes + clears the list as before.
+    if (ev._played) continue;
+    ev._played = true;
     if (ev.type === 'chain') audio.play('chain', { pitch: world.chainMul });
     else if (ev.type === 'coin') audio.play('coin');
     else audio.play(ev.type);
