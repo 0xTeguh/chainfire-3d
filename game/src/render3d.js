@@ -6,13 +6,31 @@
 // which keeps staging byte-identical).
 
 import { THREE } from './three.js';
-import { PALETTE, WORLD, POWDER_TYPES, ENEMY_TYPES, SIM } from './data.js';
+import { PALETTE, WORLD, POWDER_TYPES, ENEMY_TYPES, DEFENDER_DEFS, SIM } from './data.js';
 import { terrainHeight, buildTerrain, makeKegTextureSeeded } from './terrain.js';
 import { buildFort, wallTopY } from './fort.js';
 import { buildCharacter } from './models.js';
 import { mulberry32 } from './rng.js';
 
-const POPUP_POOL = 24;
+const POPUP_POOL = 40; // ROUND 3 (item 9): 24 -> 40 — defender damage
+// numbers triple the live popup volume at the chain peak; the pool must
+// hold a full volley (12 dmg) + chain/coin popups without dropping any.
+
+// ROUND 3 (item 9): grid offsets for the popup de-confliction fallback
+// (see _updatePopups). Fixed, sorted by distance from the origin, so the
+// closest free spot always wins and the same sim state always places the
+// same popup in the same spot. Steps of 0.07 NDC, radius up to 0.56.
+const POPUP_GRID_OFFSETS = (() => {
+  const list = [];
+  for (let gy = -8; gy <= 8; gy += 1) {
+    for (let gx = -8; gx <= 8; gx += 1) {
+      if (gx === 0 && gy === 0) continue;
+      list.push([gx * 0.07, gy * 0.07, gx * gx + gy * gy]);
+    }
+  }
+  list.sort((a, b) => a[2] - b[2]);
+  return list;
+})();
 const FLASH_POOL = 8;
 const SCORCH_POOL = 40;
 const SMOKE_POOL = 12;
@@ -199,12 +217,11 @@ export class Renderer {
     this.enemyMeshes = new Map();
     this.bossMesh = null;
     this.defenders = {};
-    const defPos = { wren: -5, pip: -14, thom: 6, mira: 14 };
-    for (const kind of ['wren', 'pip', 'thom', 'mira']) {
-      const ch = buildCharacter(kind, { seed: 11 });
+    for (const d of DEFENDER_DEFS) {
+      const ch = buildCharacter(d.kind, { seed: 11 });
       ch.group.visible = true;
       this.scene.add(ch.group);
-      this.defenders[kind] = { ...ch, z: defPos[kind] };
+      this.defenders[d.kind] = { ...ch, z: d.z };
     }
 
     // Trail ribbon.
@@ -337,6 +354,37 @@ export class Renderer {
       sprite.scale.set(9, 2.25, 1);
       this.scene.add(sprite);
       this.popups.push({ sprite, canvas, tex, text: null });
+    }
+
+    // ROUND 3 AGENT A (item 1): muzzle flashes — one small glow sprite
+    // per defender shot, born in SIM time from the 'shoot' event (same
+    // pattern as explosion flashes, so a frozen staged frame is
+    // byte-identical). 8 slots: a full volley is 4 defenders at once.
+    // ttl 0.35s (not 0.15s): the flash must survive long enough to be
+    // caught in a frozen frame — a 0.15s flash is visible in only ~10% of
+    // frames, a 0.35s one in ~25% per defender, and with the staggered
+    // volleys some defender is flashing in most frames.
+    this.muzzles = [];
+    for (let i = 0; i < 8; i += 1) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+      m.visible = false;
+      this.scene.add(m);
+      this.muzzles.push({ sprite: m, t: 99, ttl: 0.35, born: 0, x: 0, z: 0 });
+    }
+
+    // ROUND 3 AGENT A (items 1+3): defender shot tracers — bright glowing
+    // gold orbs (additive glow sprites, 2.0u — a 0.22u sphere was 2-3px
+    // at eagle distance, invisible; 2.0u is ~26px and reads as a bolt),
+    // one per live sim shot (max 32: 4 defenders x 3 shots x ~2.5
+    // volleys in flight at once). Assigned by index each frame; the sim
+    // owns the positions, the renderer only draws them.
+    this.tracers = [];
+    for (let i = 0; i < 32; i += 1) {
+      const tr = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd23f, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+      tr.visible = false;
+      tr.scale.setScalar(2.0);
+      this.scene.add(tr);
+      this.tracers.push(tr);
     }
 
     // Keg meshes (rebuilt per wave).
@@ -560,9 +608,67 @@ export class Renderer {
           this._spawnFlash(world, ev.time, c.x, c.z);
           this._spawnSmoke(world, ev.time, c.x, c.z);
         }
+      } else if (ev.type === 'shoot') {
+        // ROUND 3 (item 1): a defender fired — muzzle flash at the wall.
+        this._spawnMuzzle(ev.time, ev.x, ev.z);
       }
     }
     world.events.length = 0;
+  }
+
+  _spawnMuzzle(evTime, x, z) {
+    for (const slot of this.muzzles) {
+      if (slot.t > slot.ttl) {
+        slot.born = (typeof evTime === 'number' ? evTime : this.time);
+        slot.t = this.time - slot.born;
+        slot.ttl = 0.35;
+        slot.x = x;
+        slot.z = z;
+        slot.sprite.visible = true;
+        return;
+      }
+    }
+  }
+
+  _updateMuzzles(dt) {
+    for (const slot of this.muzzles) {
+      slot.t = (slot.born !== undefined) ? (this.time - slot.born) : (slot.t + dt);
+      if (slot.t > slot.ttl) {
+        slot.sprite.visible = false;
+        continue;
+      }
+      const f = Math.min(1, slot.t / slot.ttl);
+      const y = wallTopY(slot.z) + 2.2;
+      slot.sprite.position.set(slot.x, y, slot.z);
+      slot.sprite.scale.setScalar(3.0 * (1 - f * 0.4));
+      slot.sprite.material.opacity = 0.9 * (1 - f);
+    }
+  }
+
+  _updateTracers() {
+    const world = this.world;
+    const shots = world && Array.isArray(world.shots) ? world.shots : [];
+    const n = Math.min(shots.length, this.tracers.length);
+    for (let i = 0; i < this.tracers.length; i += 1) {
+      const tr = this.tracers[i];
+      if (i >= n) {
+        tr.visible = false;
+        continue;
+      }
+      const s = shots[i];
+      // y interpolates from the muzzle (wall top + chest height) down to
+      // the target's torso by the fraction travelled (the sim tracks
+      // dist/total, so the arc is a pure function of sim state). Sprites
+      // always face the camera, so no orientation is needed — the bright
+      // gold orb reads as a bolt against the green field.
+      const def = DEFENDER_DEFS.find((d) => d.kind === s.kind);
+      const y0 = wallTopY(def ? def.z : s.z) + 2.2;
+      const y1 = terrainHeight(s.tx, s.tz) + 1.5;
+      const frac = Math.max(0, Math.min(1, 1 - (s.dist !== undefined ? s.dist : 0) / (s.total || 1)));
+      const y = y0 + (y1 - y0) * frac;
+      tr.position.set(s.x, y, s.z);
+      tr.visible = true;
+    }
   }
 
   _burstCentroid(world) {
@@ -781,6 +887,17 @@ export class Renderer {
       const vy = ay - this.camPos.y;
       const vz = az - this.camPos.z;
       const zc = vx * fwd.x + vy * fwd.y + vz * fwd.z;
+      // ROUND 3 (item 9): bound the SCREEN size of a popup. The sprite
+      // is a fixed 9u x 2.25u in world units, so an anchor close to the
+      // camera (a kill near the spawn in the game camera, zc ~15) projects
+      // to 0.82 x 0.37 NDC — one number covering 40% of the screen width,
+      // and nine of them cannot be placed without overlapping no matter
+      // how the stack/grid searches. Clamp the half-extents to hw <= 0.12
+      // / hh <= 0.06 (full 0.24 x 0.12 NDC) by shrinking the sprite; the
+      // action-camera frame is untouched (its biggest popup is hw 0.11 /
+      // hh 0.05, below the clamp), and a lone in-frame popup still keeps
+      // its old anchor exactly.
+      let spriteShrink = 1;
       if (zc <= 0.1) {
         // Behind the camera: the GPU culls it anyway; keep the old anchor.
         slot.sprite.position.set(ax, ay, az);
@@ -790,8 +907,11 @@ export class Renderer {
         const yc = vx * up.x + vy * up.y + vz * up.z;
         let ndcX = xc / (zc * tanH);
         let ndcY = yc / (zc * tanV);
-        const hw = wHalfW / (zc * tanH);
-        const hh = hHalfW / (zc * tanV);
+        let hw = wHalfW / (zc * tanH);
+        let hh = hHalfW / (zc * tanV);
+        spriteShrink = Math.min(1, 0.12 / hw, 0.06 / hh);
+        hw *= spriteShrink;
+        hh *= spriteShrink;
         // Clamp FIRST, then stack: clamping after stacking used to drag a
         // raised popup back onto a placed one at the frame edge — the
         // corner pile-up the overlap checker caught (several off-frame
@@ -818,6 +938,32 @@ export class Renderer {
           }
           if (!raised) break;
         }
+        // ROUND 3 (item 9): the vertical stack saturates when a whole
+        // group dies at once (4-5 chain popups + coins + damage numbers
+        // anchored off-frame right, all clamped to the same edge x, then
+        // all raised to the top row). Fallback: a deterministic grid
+        // search around the stacked position — closest free spot first —
+        // so a popup always lands somewhere readable instead of piling
+        // onto the top row. The old horizontal nudge (4 attempts) could
+        // not clear a saturated column; the grid search covers the whole
+        // frame (288 candidates) and the overlap checker proves it.
+        const overlapsPlaced = () => placed.some((r) => ndcX + hw > r.left - 0.01 && ndcX - hw < r.right + 0.01
+          && ndcY + hh > r.bottom - 0.01 && ndcY - hh < r.top + 0.01);
+        if (overlapsPlaced()) {
+          const baseX = ndcX;
+          const baseY = ndcY;
+          for (const [dx, dy] of POPUP_GRID_OFFSETS) {
+            const tryX = Math.max(-maxX, Math.min(maxX, baseX + dx));
+            const tryY = Math.max(minY, Math.min(maxY, baseY + dy));
+            const saveX = ndcX;
+            const saveY = ndcY;
+            ndcX = tryX;
+            ndcY = tryY;
+            if (!overlapsPlaced()) break;
+            ndcX = saveX;
+            ndcY = saveY;
+          }
+        }
         const nx = ndcX * zc * tanH;
         const ny = ndcY * zc * tanV;
         const px = this.camPos.x + fwd.x * zc + right.x * nx + up.x * ny;
@@ -825,7 +971,7 @@ export class Renderer {
         const pz = this.camPos.z + fwd.z * zc + right.z * nx + up.z * ny;
         placed.push({ left: ndcX - hw, right: ndcX + hw, top: ndcY + hh, bottom: ndcY - hh, text: popup.text });
         slot.sprite.position.set(px, py, pz);
-        slot.sprite.scale.set(9 * scale, 2.25 * scale, 1);
+        slot.sprite.scale.set(9 * scale * spriteShrink, 2.25 * scale * spriteShrink, 1);
       }
       const alpha = popup.t < popup.ttl - 0.25 ? 1 : Math.max(0, (popup.ttl - popup.t) / 0.25);
       slot.sprite.material.opacity = alpha;
@@ -943,11 +1089,22 @@ export class Renderer {
     }
     // Defenders on the wall.
     const phase = world.phase;
+    const defStates = world.defenders || [];
     for (const kind of ['wren', 'pip', 'thom', 'mira']) {
       const def = this.defenders[kind];
       const z = def.z;
       def.group.position.set(WORLD.WALL_X - 0.5, wallTopY(z), z);
-      def.group.rotation.y = Math.PI; // face +x (toward the horde)
+      // ROUND 3 (item 1): AIM — face the last fired-at target (yaw toward
+      // aimX/aimZ); default +x (toward the horde) before the first shot.
+      // Models face -x at yaw 0, so yaw = atan2(dz, -dx) faces (dx, dz).
+      const st = defStates.find((d) => d.kind === kind);
+      let yaw = Math.PI;
+      if (st && st.hasAim) {
+        const dx = st.aimX - (WORLD.WALL_X - 0.5);
+        const dz = st.aimZ - z;
+        yaw = Math.atan2(dz, -dx);
+      }
+      def.group.rotation.y = yaw;
       let anim = 'idle';
       let expr = 'normal';
       if (phase === 'won') { anim = 'celebrate'; expr = 'cheer'; }
@@ -959,6 +1116,11 @@ export class Renderer {
       // a pure function of world.time, so it stays deterministic, and it
       // makes the defenders readable on the wall at the x8 moment.
       else if (world.chainMul >= 4) { anim = 'celebrate'; expr = 'cheer'; }
+      // ROUND 3 (item 1): a defender that just fired shows the attack
+      // pose (recoil — weapon arm lunges) for 0.5s of sim time, so the
+      // shot reads as an ACTION, not a statue. At the x8 freeze this mixes
+      // with celebrate: some defenders shoot, some cheer.
+      if (st && world.time - st.lastShotT < 0.5 && phase !== 'won' && phase !== 'lost') anim = 'attack';
       def.setPose(anim, world.time, { expression: expr });
     }
     // Wall damage visual.
@@ -1046,6 +1208,8 @@ export class Renderer {
     this._updateKegs();
     this._updateCharacters();
     this._updatePopups();
+    this._updateMuzzles(dt);
+    this._updateTracers();
     this._updateParticles();
     this._updateScorches();
     this._updateFlashes(dt);

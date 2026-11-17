@@ -63,6 +63,17 @@ export const POWDER_TYPES = {
 };
 export const POWDER_ORDER = ['BLACK', 'NAPHTHA', 'STAR'];
 
+// The Garrison: defender kind + wall position (z). Shared by the sim
+// (defender-fire state) and the renderer (placement) — one source, so the
+// shots always leave from the defender the player sees on the wall.
+// ROUND 3 AGENT A (items 1+3).
+export const DEFENDER_DEFS = [
+  { kind: 'wren', z: -5 },
+  { kind: 'pip', z: -14 },
+  { kind: 'thom', z: 6 },
+  { kind: 'mira', z: 14 }
+];
+
 // Enemy roster — THE ASHEN HORDE. Stats are the verified 2D stats, rescaled.
 // scale = visual height multiplier (standard = 1.0, ~3.2 world units tall).
 export const ENEMY_TYPES = {

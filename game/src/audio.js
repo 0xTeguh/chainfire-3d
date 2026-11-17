@@ -145,6 +145,13 @@ export function createAudio() {
       tone({ type: 'square', freq: 880, freqEnd: 660, dur: 0.05, vol: 0.12 });
     },
 
+    // Defender shot (ROUND 3, item 1): a tiny dry pop — deliberately
+    // quiet (vol 0.06) and short, because a full volley is 12 shots and
+    // a loud crack per shot would read as a machine gun.
+    shoot() {
+      tone({ type: 'square', freq: 1400, freqEnd: 900, dur: 0.04, vol: 0.06 });
+    },
+
     // Explosion: sub sine drop + low noise thump.
     boom() {
       tone({ type: 'sine', freq: 130, freqEnd: 38, dur: 0.5, vol: 0.5 });

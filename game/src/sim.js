@@ -5,10 +5,27 @@
 // -x), z = lateral lanes, y = terrain height (read via terrainHeight).
 
 import {
-  WORLD, PX, POWDER_TYPES, POWDER_ORDER, ENEMY_TYPES, WAVES, DIFFICULTIES,
+  WORLD, PX, POWDER_TYPES, POWDER_ORDER, ENEMY_TYPES, DEFENDER_DEFS, WAVES, DIFFICULTIES,
   DIFF_ORDER, CARD_DEFS, FEATS, SIM, BOSS, gradeFor, gradeChecklist
 } from './data.js';
 import { mulberry32, shuffleInPlace } from './rng.js';
+
+// ROUND 3 AGENT A — defender fire (items 1+3): the Garrison shoots back.
+// Each defender fires a volley of 3 shots at up to 3 nearest enemies in
+// range every FIRE_INTERVAL seconds (staggered per defender, so the
+// volleys don't all land at once). Damage is small chip damage — the
+// trail stays the main killer — but REAL: a shot can finish an enemy, and
+// the kill registers through registerKill exactly like a trail kill
+// (score, chain, powder, coins). Shots home on their target's current
+// position; if the target dies first, the shot fizzles at the last point.
+const DEFENDER_FIRE = {
+  DAMAGE: 10,
+  SHOTS_PER_VOLLEY: 3,
+  INTERVAL: 1.4,
+  RANGE_X: 40, // only enemies at x <= 40 (mid-field, visible in frame)
+  SPEED: 42, // world units / second — crosses the field in ~1s
+  SHOT_TTL: 2.0
+};
 
 const TYPE_TIER = { cinderling: 0, torchbearer: 1, ironhide: 2, saboteur: 3 };
 const TYPE_LABEL = { cinderling: 'Cinderling', torchbearer: 'Torchbearer', ironhide: 'Ironhide', saboteur: 'Saboteur' };
@@ -31,8 +48,10 @@ function writeBest(value) {
   }
 }
 
-function pushEvent(world, type) {
-  world.events.push({ type, time: world.time });
+function pushEvent(world, type, extra) {
+  const ev = { type, time: world.time };
+  if (extra && typeof extra === 'object') Object.assign(ev, extra);
+  world.events.push(ev);
 }
 
 function pushPopup(world, popup) {
@@ -227,10 +246,10 @@ function setupWave(world, waveNumber) {
   updateNextInfo(world);
 }
 
-function spawnEnemy(world, type, laneOverride) {
+function spawnEnemy(world, type, laneOverride, xOff, zOff) {
   const def = ENEMY_TYPES[type] || ENEMY_TYPES.torchbearer;
   const lane = laneOverride !== undefined ? laneOverride : Math.floor(world.rng() * WORLD.LANES_Z.length);
-  const z = WORLD.LANES_Z[lane] + (world.rng() * 2 - 1) * WORLD.LANE_JITTER;
+  const z = WORLD.LANES_Z[lane] + (zOff !== undefined ? zOff : (world.rng() * 2 - 1) * WORLD.LANE_JITTER);
   const enemy = {
     id: world.idCounter,
     type,
@@ -239,7 +258,7 @@ function spawnEnemy(world, type, laneOverride) {
     speed: def.speed * world.difficulty.speedMul,
     dmg: def.dmg,
     radius: def.radius,
-    x: WORLD.SPAWN_X + def.radius,
+    x: WORLD.SPAWN_X + def.radius + (xOff || 0),
     z,
     lane,
     bobPhase: world.rng() * Math.PI * 2,
@@ -256,16 +275,33 @@ function spawnEnemy(world, type, laneOverride) {
   return enemy;
 }
 
+// ROUND 3 AGENT A (item 2): monsters spawn in GROUPS of 4-5 together in
+// one lane, not one-by-one. The group takes the next 4-5 types off the
+// shuffled queue and spawns them in the same lane with small x/z offsets
+// so each reads as an individual (spacing + distinct silhouettes, never a
+// merged blob). Returns the group size so the caller can scale the spawn
+// timer and keep the wave's overall spawn pacing unchanged.
+function spawnGroup(world) {
+  const count = Math.min(world.spawnQueue.length, 4 + Math.floor(world.rng() * 2));
+  if (count <= 0) return 0;
+  const lane = Math.floor(world.rng() * WORLD.LANES_Z.length);
+  for (let i = 0; i < count; i += 1) {
+    const type = world.spawnQueue.shift();
+    const xOff = world.rng() * 3.5;
+    const zOff = (world.rng() * 2 - 1) * 3.0;
+    spawnEnemy(world, type, lane, xOff, zOff);
+  }
+  return count;
+}
+
 function beginCombat(world) {
   const cfg = WAVES[world.wave - 1];
   world.phase = 'combat';
   world.phaseTime = 0;
   world.combatStartTime = world.time;
-  const lanes = [0, 1, 2];
-  for (let i = 0; i < 3 && world.spawnQueue.length > 0; i += 1) {
-    spawnEnemy(world, world.spawnQueue.shift(), lanes[i]);
-  }
-  world.spawnTimer = cfg.interval;
+  // ROUND 3 (item 2): the wave opens with a GROUP, not three singles.
+  const first = spawnGroup(world);
+  world.spawnTimer = cfg.interval * Math.max(1, first);
   updateNextInfo(world);
 }
 
@@ -554,6 +590,101 @@ function updateGroundFire(world, dt) {
   world.groundFire = world.groundFire.filter((patch) => patch.t < 2 + world.mods.groundFireBonus);
 }
 
+function updateDefenders(world, dt) {
+  if (world.phase !== 'combat') return;
+  for (const def of world.defenders) {
+    def.cooldown -= dt;
+    if (def.cooldown > 0) continue;
+    // Targets: up to 3 nearest living enemies in range (closest to the
+    // wall first), distinct — a volley is multi-target by construction
+    // (item 3). The boss is NOT a target: the Titan is the trail/keg's
+    // job; defender shots are anti-raider fire.
+    const inRange = [];
+    for (const e of world.enemies) {
+      if (e.dead) continue;
+      if (e.x > DEFENDER_FIRE.RANGE_X) continue;
+      inRange.push(e);
+    }
+    if (inRange.length === 0) {
+      def.cooldown = 0.25; // nothing in range — re-check soon, cheap
+      continue;
+    }
+    inRange.sort((a, b) => a.x - b.x);
+    const targets = inRange.slice(0, DEFENDER_FIRE.SHOTS_PER_VOLLEY);
+    for (const target of targets) {
+      world.shots.push({
+        id: world.shotIdCounter,
+        kind: def.kind,
+        x: WORLD.WALL_X - 0.5,
+        z: def.z,
+        tx: target.x,
+        tz: target.z,
+        total: Math.max(1, Math.hypot(target.x - (WORLD.WALL_X - 0.5), target.z - def.z)),
+        targetId: target.id,
+        damage: DEFENDER_FIRE.DAMAGE,
+        t: 0,
+        ttl: DEFENDER_FIRE.SHOT_TTL,
+        speed: DEFENDER_FIRE.SPEED
+      });
+      world.shotIdCounter += 1;
+    }
+    def.aimX = targets[0].x;
+    def.aimZ = targets[0].z;
+    def.hasAim = true;
+    def.lastShotT = world.time;
+    def.cooldown = DEFENDER_FIRE.INTERVAL + def.offset;
+    pushEvent(world, 'shoot', { x: WORLD.WALL_X - 0.5, z: def.z, defender: def.kind });
+  }
+}
+
+function updateShots(world, dt) {
+  if (world.shots.length === 0) return;
+  const remaining = [];
+  for (const shot of world.shots) {
+    shot.t += dt;
+    // Home on the target's CURRENT position (or the last known point if
+    // it died first — the shot then fizzles on arrival, no damage).
+    let tx = shot.tx;
+    let tz = shot.tz;
+    let target = null;
+    for (const e of world.enemies) {
+      if (e.id === shot.targetId && !e.dead) { target = e; break; }
+    }
+    if (target) {
+      tx = target.x;
+      tz = target.z;
+      shot.tx = tx;
+      shot.tz = tz;
+    }
+    const dx = tx - shot.x;
+    const dz = tz - shot.z;
+    const dist = Math.hypot(dx, dz);
+    shot.dist = dist;
+    const stepLen = shot.speed * dt;
+    if (dist <= Math.max(0.7, stepLen)) {
+      // Arrived: hit (damage number on hit, item 1) or fizzle.
+      if (target) {
+        damageEnemy(world, target, shot.damage, 'shot');
+        pushPopup(world, {
+          text: `-${shot.damage}`,
+          x: target.x,
+          z: target.z,
+          t: 0,
+          ttl: 0.6,
+          color: 0xf5e6c8,
+          size: 13,
+          kind: 'dmg'
+        });
+      }
+      continue; // consumed
+    }
+    shot.x += (dx / dist) * stepLen;
+    shot.z += (dz / dist) * stepLen;
+    if (shot.t < shot.ttl) remaining.push(shot);
+  }
+  world.shots = remaining;
+}
+
 function updateEnemies(world, dt) {
   for (const enemy of world.enemies) {
     if (enemy.dead) {
@@ -701,6 +832,26 @@ export function createWorld(difficultyName, seed) {
     combatStartTime: null,
     groundFire: [],
     idCounter: 1,
+    // ROUND 3 AGENT A (items 1+3): the Garrison's fire state. Cooldowns
+    // are staggered so the four volleys don't all land at once; lastShotT
+    // drives the attack (recoil) pose in the renderer; aimX/aimZ drive the
+    // aim yaw. Shots are sim objects (homing, deterministic).
+    defenders: DEFENDER_DEFS.map((d, i) => ({
+      kind: d.kind, z: d.z,
+      cooldown: 0.35 + i * 0.35,
+      // ROUND 3 (item 1): per-defender volley stagger (0/0.1/0.2/0.3s).
+      // Without it the four defenders re-synchronise the moment a group
+      // enters range (all acquire targets together, all reset to the same
+      // 1.4s), so the attack pose + muzzle flash are visible only in one
+      // 0.3s window per 1.4s cycle. With the stagger the volleys stay
+      // spread over 0.3s (still one visible volley of up to 12 shots) and
+      // some defender is almost always mid-attack. Deterministic: fixed
+      // offsets, no rng.
+      offset: i * 0.1,
+      lastShotT: -999, aimX: 0, aimZ: d.z, hasAim: false
+    })),
+    shots: [],
+    shotIdCounter: 1,
     lastKillTime: -999,
     lastKillX: 0,
     lastKillZ: 0,
@@ -946,12 +1097,15 @@ export function update(world, dt) {
       }
     }
 
+    // ROUND 3 (item 2): groups of 4-5 at once; the timer scales by the
+    // group size so the wave's overall spawn pacing stays the same.
     while (world.spawnQueue.length > 0 && world.spawnTimer <= 0) {
-      spawnEnemy(world, world.spawnQueue.shift());
-      world.spawnTimer += WAVES[world.wave - 1].interval;
+      const n = spawnGroup(world);
+      world.spawnTimer += WAVES[world.wave - 1].interval * Math.max(1, n);
     }
     if (world.spawnQueue.length > 0) world.spawnTimer -= step;
 
+    updateDefenders(world, step);
     updateEnemies(world, step);
     updateBurningTrail(world, step);
     updateGroundFire(world, step);
@@ -968,6 +1122,10 @@ export function update(world, dt) {
     updateGroundFire(world, step);
     updateKegs(world, step);
   }
+
+  // ROUND 3 (items 1+3): in-flight defender shots resolve in every phase
+  // (a volley fired just before the win still lands on its target).
+  updateShots(world, step);
 
   if (world.chain > 0) {
     world.chainTimer -= step;

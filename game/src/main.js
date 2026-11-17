@@ -25,12 +25,24 @@ const FPS_MODE = params.get('fps') === '1';
 // real numbers (seed 7, STANDARD — WON 213s, score 102,250, wall 360/360,
 // kills 162, longest chain 23, grade S, feats 7/8), so BEST is consistent
 // across all 4 shots. Last runs 2-3 are two earlier real 3D bot runs.
+// ROUND 3 AGENT A — re-derived 17 Nov 21:xx WIB from the new bot runs
+// (seed 7, STANDARD, BOT_FN unchanged): group spawning (item 2) makes
+// kills bursty, so the chain breaks between groups — longestChain 23 -> 9
+// and the chain-multiplied score falls. The win run is still S-grade,
+// flawless wall, 7/8 feats (missing keg_master, 0 kegs blown), same 9
+// cards. BEST 102,250 -> 69,650; lastRuns[0] = the new win run
+// (69,650, S, wave 10, kills 160, longestChain 9, time 214s = 03:34).
+// Lifetime = the 3 pre-change runs (a/b/c, unchanged) + the new S run:
+// raiders 619 - 162 + 160 = 617, biggestChain max(9, 13, 10, 9) = 13
+// (the old S run's 23 is superseded by the balance change — recorded in
+// build-log-3d.md, ROUND 3 AGENT A). Numbers file:
+// verify-3d/proof-r3a/numbers-new.json.
 const STAGED_PROFILE = {
-  best: 102250,
+  best: 69650,
   feats: { unlocked: ['first_blood', 'flawless_wall', 'powder_hoarder', 'speed_clear', 'chain_reaction', 'cool_head', 'boss_slayer'], total: 8 },
-  lifetime: { raidersBlown: 619, biggestChain: 23, runsPlayed: 4, wins: 3 },
+  lifetime: { raidersBlown: 617, biggestChain: 13, runsPlayed: 4, wins: 3 },
   lastRuns: [
-    { score: 102250, wave: 10, result: 'won', grade: 'S', kills: 162, longestChain: 23, time: 212 },
+    { score: 69650, wave: 10, result: 'won', grade: 'S', kills: 160, longestChain: 9, time: 214 },
     { score: 58680, wave: 10, result: 'won', grade: 'A', kills: 147, longestChain: 10, time: 436 },
     { score: 57130, wave: 10, result: 'won', grade: 'A', kills: 155, longestChain: 9, time: 433 }
   ],
@@ -320,15 +332,18 @@ function stageTitle() {
 function stageDraft() {
   // Wave 5 cleared, draft offered, board visible behind the cards.
   // Numbers are the REAL S-grade bot run's state at the wave-5 draft
-  // (seed 7): score 28,450, coins 360, powder 140, wall 300/300, 4 cards
+  // (seed 7): score 21,050, coins 360, powder 140, wall 300/300, 4 cards
   // picked, offered [quick_burn, siege_breaker, bounty_powder].
+  // ROUND 3 AGENT A: re-derived — only the score changed vs the old run
+  // (28,450 -> 21,050); coins, powder, wall, picked and offered are
+  // identical to the old run (see verify-3d/proof-r3a/numbers-new.json).
   world = createWorld('STANDARD', 7);
   renderer.setWorld(world);
   renderer.setCameraPreset('draft');
   mode = 'draft';
   world.clearedWave = 5;
   world.wave = 6;
-  world.score = 28450;
+  world.score = 21050;
   world.coins = 360;
   world.wallHp = 300;
   world.wallMax = 300;
