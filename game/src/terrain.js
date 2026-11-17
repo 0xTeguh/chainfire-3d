@@ -193,6 +193,9 @@ export function buildTerrain(scene, rng) {
   const colDry = new THREE.Color(0xb59a68);
   const colTrample = new THREE.Color(0x8a7a5a);
   const colWear = new THREE.Color(0xd8bc84);
+  // R5B ground treatment: old burn scars (char) + ember glints.
+  const colScorch = new THREE.Color(0x4a3423);
+  const colEmber = new THREE.Color(0xff7a1a);
   const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
     const x = pos.getX(i);
@@ -235,6 +238,31 @@ export function buildTerrain(scene, rng) {
       tmp.multiplyScalar(1 + rut * 0.12 + stone * 0.06);
       // Center wear: the middle of the road is lighter, walked bare.
       tmp.lerp(colWear, (1 - laneDist / roadWidth) * 0.08);
+    }
+    // ROUND 5 AGENT B (ground treatment, Mark 01:37 WIB): old burn scars —
+    // a scorched / ember-strewn band in the inter-lane gaps. Chosen over
+    // a denser far tree line for two reasons: (1) the empty region is the
+    // MID-field, not the frame edges (which already have trees); (2) the
+    // tree line is visible in EVERY shot, while this band can be confined
+    // to the ACTION-ONLY side of the field (frustum-checked per-z:
+    // south gap x >= 25.5, north gap x >= 26.5 at y=1; band uses x >= 29
+    // / x >= 30.5 — the first try at x >= 27 / 28.5 leaked 33 pixels into
+    // the draft frame's right edge via vertex-colour interpolation +
+    // terrain-height shift, so the edge moved 2u east; capped at x <= 33
+    // to stay clear of the river/bridge at x 34.75+), so title/draft/
+    // results stay byte-identical. Patchy char (noise mask, never a solid
+    // swath) + ember flecks, max ~50% lerp in the worst patch — BRIGHT
+    // identity stays, ground stays inside Mark's 35% texture budget. The
+    // band sits BETWEEN lanes, never on a road (roads are on the lanes).
+    const inScorchSouth = z >= 4 && z <= 10 && x >= 29 && x <= 33;
+    const inScorchNorth = z >= -10 && z <= -4 && x >= 30.5 && x <= 33;
+    if (inScorchSouth || inScorchNorth) {
+      const scorchMask = smoothNoise(x * 0.5, z * 0.5, 99);
+      if (scorchMask > 0.5) {
+        tmp.lerp(colScorch, Math.min(0.5, (scorchMask - 0.5) * 1.0));
+      }
+      const fleck = hash2(Math.floor(x * 2), Math.floor(z * 2), 101);
+      if (fleck > 0.93) tmp.lerp(colEmber, 0.45);
     }
     colors[i * 3] = tmp.r;
     colors[i * 3 + 1] = tmp.g;
@@ -834,6 +862,96 @@ export function buildTerrain(scene, rng) {
     birds.add(bird);
   }
   group.add(birds);
+
+  // ROUND 5 AGENT B (item #4, Mark 01:37 WIB): mid-field prop clusters —
+  // the action frame's mid-field is ~40% empty green. The world builder
+  // put every tree/rock/bush at the field EDGES (z ±20..31) and left the
+  // playfield bare; these clusters fill the gaps BETWEEN the lanes on the
+  // action-only side. Placement rules (all frustum-checked at y=1 and
+  // y=2.5, so title/draft/results stay byte-identical): south gap x >= 27,
+  // north gap x >= 28.5, near strip x >= 20; every prop x <= 33 (clear of
+  // the river/bridge at x 34.75+); every prop >= 4.5u from a lane centre
+  // (trail + enemy path stay clear) and >= 5u from a keg spot; all props
+  // <= ~1.6u tall (low — they never occlude the trail, the beams, or the
+  // Titan). Fixed literal coordinates: no rng drawn here, so the seeded
+  // layout of everything else is untouched.
+  const clusterRockGeo = new THREE.IcosahedronGeometry(1, 0);
+  const clusterRockMat = new THREE.MeshStandardMaterial({ color: 0x8a8a7a, roughness: 1, flatShading: true });
+  const clusterStumpMat = new THREE.MeshStandardMaterial({ color: 0x4a3428, roughness: 1, flatShading: true });
+  const clusterBushGeo = new THREE.IcosahedronGeometry(1, 0);
+  const clusterBushMat = new THREE.MeshStandardMaterial({ color: 0x2e6b34, roughness: 1, flatShading: true });
+  const clusterKegMat = new THREE.MeshStandardMaterial({ map: makeKegTextureSeeded(77), roughness: 0.9 });
+  const clusters = new THREE.Group();
+  clusters.name = 'propClusters';
+  // [type, cx, cz, dx, dz, scale, rotY] — cx/cz = cluster centre.
+  // R5B fix: C1 moved 27 -> 29 (the 27 centre's rock western edge at
+  // x 25.1 grazed the draft frame's right edge — same 33-pixel leak as
+  // the scorch band; 2u east clears it with margin).
+  const clusterProps = [
+    ['rock', 29, 7, -0.8, 0.4, 1.1, 0.6],
+    ['stump', 29, 7, 0.7, -0.5, 1.0, 0],
+    ['bush', 29, 7, 0.2, 0.9, 1.3, 1.2],
+    ['keg', 29, 7, 1.1, 0.6, 0.9, 0.4],
+    ['rock', 30, 8.5, -0.5, 0.3, 0.9, 1.9],
+    ['bush', 30, 8.5, 0.6, -0.4, 1.0, 0.3],
+    ['rock', 30, -7, 0.7, 0.5, 1.2, 2.4],
+    ['stump', 30, -7, -0.6, -0.6, 1.1, 0],
+    ['bush', 30, -7, -0.1, 0.8, 1.2, 2.0],
+    ['keg', 30, -7, -1.0, 0.4, 0.85, 1.1],
+    ['bush', 20, 22, -0.7, 0.3, 1.4, 0.8],
+    ['rock', 20, 22, 0.6, -0.5, 1.0, 1.5],
+    ['stump', 20, 22, 0.1, 0.9, 0.9, 0],
+    ['rock', 28, 21, -0.4, -0.3, 1.1, 0.2],
+    ['bush', 28, 21, 0.7, 0.5, 1.2, 2.6]
+  ];
+  for (const [type, cx, cz, dx, dz, sc, ry] of clusterProps) {
+    const px = cx + dx;
+    const pz = cz + dz;
+    const py = terrainHeight(px, pz);
+    let m;
+    if (type === 'rock') {
+      m = new THREE.Mesh(clusterRockGeo, clusterRockMat);
+      m.scale.set(sc, sc * 0.7, sc);
+      m.position.set(px, py + 0.3 * sc, pz);
+      m.rotation.set(0.4, ry, 0.2);
+    } else if (type === 'stump') {
+      m = new THREE.Mesh(new THREE.CylinderGeometry(0.45 * sc, 0.55 * sc, 1.2 * sc, 8), clusterStumpMat);
+      m.position.set(px, py + 0.6 * sc, pz);
+      m.rotation.set(0, ry, 0);
+    } else if (type === 'bush') {
+      m = new THREE.Mesh(clusterBushGeo, clusterBushMat);
+      m.scale.set(sc, sc * 0.55, sc);
+      m.position.set(px, py + 0.35 * sc, pz);
+      m.rotation.set(0, ry, 0);
+    } else { // broken keg: fallen on its side, half-sunk
+      m = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * sc, 0.55 * sc, 1.1 * sc, 12), clusterKegMat);
+      m.position.set(px, py + 0.35 * sc, pz);
+      m.rotation.set(0, ry, 1.35);
+    }
+    m.castShadow = true;
+    clusters.add(m);
+  }
+  group.add(clusters);
+
+  // R5B: ember flecks — tiny glowing shards scattered in the scorch band
+  // (same rects as the vertex-colour scorch above). Dedicated rng stream
+  // so the main seeded layout is untouched.
+  const fleckRng = mulberry32(20261117 + 771);
+  const fleckGeo = new THREE.ConeGeometry(0.17, 0.32, 4);
+  const fleckMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 2.5, roughness: 0.6, flatShading: true });
+  const flecks = new THREE.InstancedMesh(fleckGeo, fleckMat, 48);
+  for (let i = 0; i < 48; i += 1) {
+    const south = i % 2 === 0;
+    const fx = south ? range(fleckRng, 29, 33) : range(fleckRng, 30.5, 33);
+    const fz = south ? range(fleckRng, 4, 10) : range(fleckRng, -10, -4);
+    dummy.position.set(fx, terrainHeight(fx, fz) + 0.1, fz);
+    dummy.rotation.set(range(fleckRng, -0.4, 0.4), fleckRng() * Math.PI, range(fleckRng, -0.4, 0.4));
+    dummy.scale.setScalar(range(fleckRng, 0.7, 1.3));
+    dummy.updateMatrix();
+    flecks.setMatrixAt(i, dummy.matrix);
+  }
+  flecks.instanceMatrix.needsUpdate = true;
+  group.add(flecks);
 
   scene.add(group);
   return { group, wheat, grass, dryGrass, clouds, birds, brickTexture: null };

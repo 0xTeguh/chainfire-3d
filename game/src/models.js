@@ -457,11 +457,20 @@ export function buildCharacter(kind, opts = {}) {
     // THE CINDER TITAN: furnace golem, 4x scale. Wide shoulders, chimney
     // on the back, glowing furnace core in the chest, crown of embers,
     // huge arms. Must read as a BOSS at a glance.
-    const iron = std(0x2b2b2b, { rough: 0.7, metal: 0.35 });
-    const ironDark = std(0x1a1a1a, { rough: 0.8, metal: 0.3 });
+    // ROUND 5 AGENT B (item #3, Mark 01:37 WIB): the Titan read as a
+    // near-black blob in the action frame — dark iron (0x2b2b2b, metal
+    // 0.35) eats the golden-hour light on every face the camera sees
+    // (proven by verify-3d/capture-titan.jpg: body black, only the core /
+    // eyes / crown glow). Warm ember-iron instead: the body now reads as
+    // hot rusted iron, the core is bigger + hotter, and glowing ember
+    // seams wrap the camera-facing sides (front -x + south +z) — the
+    // cinderling lesson: ember must wrap the creature, not sit on its
+    // hidden back. Model scale UNCHANGED (4.0x); sim untouched.
+    const iron = std(0x7a5238, { rough: 0.6, metal: 0.15 });
+    const ironDark = std(0x54382a, { rough: 0.75, metal: 0.15 });
     const brass = std(0xc9a227, { rough: 0.45, metal: 0.6 });
-    const emberMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.0 });
-    coreMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.2, rough: 0.4 });
+    const emberMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.6 });
+    coreMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.2, rough: 0.4 });
 
     legL = piv(0, 1.0 * s, 0.55 * s);
     cyl(legL, 0.4 * s, 0.44 * s, 0.9 * s, iron, 0, -0.5 * s, 0);
@@ -474,11 +483,13 @@ export function buildCharacter(kind, opts = {}) {
     reg(body);
     box(inner, 1.34 * s, 0.5 * s, 1.74 * s, ironDark, 0, 1.25 * s, 0);
     // Furnace core: glowing circle on the chest front (-x) + brass ring.
-    const core = mesh(inner, new THREE.CircleGeometry(0.34 * s, 20), coreMat, -0.67 * s, 1.8 * s, 0);
+    // R5B: bigger (0.34s -> 0.44s) + hotter (flicker base 2.2 -> 3.2) so
+    // the furnace reads at 320px, not just at close-up.
+    const core = mesh(inner, new THREE.CircleGeometry(0.44 * s, 20), coreMat, -0.67 * s, 1.8 * s, 0);
     core.rotation.y = -Math.PI / 2;
-    const ring = mesh(inner, new THREE.TorusGeometry(0.38 * s, 0.05 * s, 8, 24), brass, -0.67 * s, 1.8 * s, 0);
+    const ring = mesh(inner, new THREE.TorusGeometry(0.48 * s, 0.07 * s, 8, 24), brass, -0.67 * s, 1.8 * s, 0);
     ring.rotation.y = Math.PI / 2;
-    flicker.push({ obj: core, kind: 'emissive', mat: coreMat, base: 2.2, amp: 0.25, speed: 5, phase: rng() * 6 });
+    flicker.push({ obj: core, kind: 'emissive', mat: coreMat, base: 3.2, amp: 0.25, speed: 5, phase: rng() * 6 });
     parts.core = core;
     // Damage cracks (hidden until damageState >= 1).
     const crackMat = std(0x0d0d0d, { rough: 1 });
@@ -487,6 +498,17 @@ export function buildCharacter(kind, opts = {}) {
       c.visible = false;
       cracks.push(c);
     }
+    // R5B: ember seams — glowing cracks wrapping the CAMERA-facing sides
+    // (front -x + south +z). Always visible: the Titan is a furnace, its
+    // seams glow even at full HP (the damage cracks above stay gated).
+    // Body face is x -0.65s / z +0.85s; seams sit half-embedded like the
+    // damage cracks, so no z-fighting.
+    const seam = (w, h, d, x, y, z, rz = 0) => box(inner, w, h, d, emberMat, x, y, z, 0, 0, rz);
+    seam(0.04 * s, 0.55 * s, 0.07 * s, -0.66 * s, 1.35 * s, 0.55 * s, 0.15);
+    seam(0.04 * s, 0.5 * s, 0.07 * s, -0.66 * s, 2.15 * s, -0.5 * s, -0.2);
+    seam(0.04 * s, 0.4 * s, 0.07 * s, -0.66 * s, 1.15 * s, -0.55 * s, 0.5);
+    seam(0.07 * s, 0.5 * s, 0.04 * s, 0.25 * s, 1.5 * s, 0.86 * s, 0.2);
+    seam(0.07 * s, 0.45 * s, 0.04 * s, -0.3 * s, 2.1 * s, 0.86 * s, -0.25);
 
     // Wide shoulders + spikes.
     ball(inner, 0.55 * s, iron, 0, 2.45 * s, 1.0 * s);
@@ -524,8 +546,8 @@ export function buildCharacter(kind, opts = {}) {
       const cz = Math.sin(a) * 0.3 * s;
       cone(head, 0.1 * s, 0.24 * s, emberMat, cx, 0.5 * s, cz, range(rng, -0.15, 0.15), 0, range(rng, -0.15, 0.15));
     }
-    emberEye(head, -0.42 * s, 0.08 * s, 0.18 * s, 0.13 * s);
-    emberEye(head, -0.42 * s, 0.08 * s, -0.18 * s, 0.13 * s);
+    emberEye(head, -0.42 * s, 0.08 * s, 0.2 * s, 0.15 * s);
+    emberEye(head, -0.42 * s, 0.08 * s, -0.2 * s, 0.15 * s);
     // Heavy brow + dark mouth with ember teeth.
     box(head, 0.08 * s, 0.1 * s, 0.56 * s, ironDark, -0.44 * s, 0.22 * s, 0);
     box(head, 0.04 * s, 0.1 * s, 0.34 * s, std(0x0d0d0d), -0.46 * s, -0.18 * s, 0);
