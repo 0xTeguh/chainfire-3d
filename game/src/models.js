@@ -168,8 +168,19 @@ export function buildCharacter(kind, opts = {}) {
     // Lighter warm-tan skin + hotter, BIGGER ember details (cracks, belly,
     // eyes, head tuft, mouth glow) so the creature reads hot orange-brown
     // against the green field at 320px, not black.
-    const skin = std(0x7a4f30, { rough: 0.9 });
-    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.0 });
+    // ITEM 3 (18:36 WIB): STILL a blob in the action frame — the close-up
+    // reads (face + cracks visible) but the ACTION camera sees the
+    // cinderling's BACK (+x side: enemies face -x toward the fort), and
+    // the back was plain dark skin with NO ember at all. At 0.6x the whole
+    // creature is ~10px, so the face-side ember is sub-pixel anyway.
+    // Fix: the ember must wrap the WHOLE creature, not just the face.
+    // Much lighter skin + warm emissive so the body can never render
+    // near-black in shadow; ember cracks + glow patch on the BACK; a hot
+    // patch on TOP (what the 34-degree eagle camera actually sees);
+    // a 3-spike ember crown (spiky silhouette from above); bigger eyes
+    // and belly glow. The body must read AMBER, not brown, at distance.
+    const skin = std(0xa8653c, { rough: 0.9, emissive: 0x8a3d00, ei: 0.7 });
+    const ember = std(0xff7a1a, { emissive: 0xff5a00, ei: 4.0 });
 
     legL = piv(0, 0.5 * s, 0.28 * s);
     cap(legL, 0.11 * s, 0.22 * s, skin, 0, -0.16 * s, 0);
@@ -181,14 +192,27 @@ export function buildCharacter(kind, opts = {}) {
     body = ball(inner, 0.85 * s, skin, 0, 1.15 * s, 0);
     reg(body);
     // Ember cracks: small glowing boxes stuck on the belly front (-x).
-    for (let i = 0; i < 3; i += 1) {
-      const cy = 0.95 * s + i * 0.28 * s;
+    for (let i = 0; i < 4; i += 1) {
+      const cy = 0.9 * s + i * 0.26 * s;
       const cz = range(rng, -0.35, 0.35) * s;
-      const crack = box(inner, 0.04 * s, 0.24 * s, 0.09 * s, ember, -0.82 * s, cy, cz, 0, 0, range(rng, -0.4, 0.4));
+      const crack = box(inner, 0.04 * s, 0.26 * s, 0.1 * s, ember, -0.82 * s, cy, cz, 0, 0, range(rng, -0.4, 0.4));
+      crack.rotation.y = range(rng, -0.25, 0.25);
+    }
+    // ITEM 3: ember cracks on the BACK (+x) — the side the action camera
+    // sees. Same recipe, mirrored, so the creature glows from every angle.
+    for (let i = 0; i < 3; i += 1) {
+      const cy = 0.95 * s + i * 0.3 * s;
+      const cz = range(rng, -0.35, 0.35) * s;
+      const crack = box(inner, 0.04 * s, 0.26 * s, 0.1 * s, ember, 0.82 * s, cy, cz, 0, 0, range(rng, -0.4, 0.4));
       crack.rotation.y = range(rng, -0.25, 0.25);
     }
     // Belly glow: a warm patch low on the body so the silhouette reads hot.
-    ball(inner, 0.34 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 2.0 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
+    ball(inner, 0.42 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 3.0 }), -0.55 * s, 0.75 * s, 0).scale.set(0.5, 1, 1);
+    // ITEM 3: back glow patch (+x) + top glow patch (what the eagle
+    // camera sees from 34 degrees down). Both flattened ember balls.
+    ball(inner, 0.4 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 3.0 }), 0.55 * s, 0.8 * s, 0).scale.set(0.5, 1, 1);
+    const topGlow = ball(inner, 0.48 * s, std(0xff9a2a, { emissive: 0xff6a00, ei: 3.6 }), 0.1 * s, 1.9 * s, 0);
+    topGlow.scale.set(1, 0.45, 1);
 
     armL = piv(0, 1.5 * s, 0.78 * s, 0.25, 0, 0);
     cap(armL, 0.09 * s, 0.26 * s, skin, 0, -0.2 * s, 0);
@@ -198,14 +222,17 @@ export function buildCharacter(kind, opts = {}) {
     head = piv(0, 2.35 * s, 0);
     const skull = ball(head, 0.6 * s, skin, 0, 0, 0);
     parts.headMesh = skull;
-    emberEye(head, -0.48 * s, 0.1 * s, 0.24 * s, 0.18 * s);
-    emberEye(head, -0.48 * s, 0.1 * s, -0.24 * s, 0.18 * s);
+    emberEye(head, -0.48 * s, 0.1 * s, 0.24 * s, 0.21 * s);
+    emberEye(head, -0.48 * s, 0.1 * s, -0.24 * s, 0.21 * s);
     // Open mouth: dark hollow + hot glow inside.
     const mouth = ball(head, 0.17 * s, std(0x140a06, { rough: 0.7 }), -0.52 * s, -0.2 * s, 0);
     mouth.scale.set(0.4, 1, 1.25);
     ball(head, 0.08 * s, std(0xff7a1a, { emissive: 0xff5a00, ei: 2.6 }), -0.56 * s, -0.26 * s, 0);
-    // Ember tuft on top — tallest point, keeps the silhouette spiky.
-    cone(head, 0.24 * s, 0.36 * s, ember, 0, 0.68 * s, 0, 0, 0, range(rng, -0.15, 0.15));
+    // Ember crown on top: THREE spikes now (was one small cone) — the
+    // tallest point, keeps the silhouette spiky from above and behind.
+    cone(head, 0.26 * s, 0.5 * s, ember, 0, 0.72 * s, 0, 0, 0, range(rng, -0.15, 0.15));
+    cone(head, 0.16 * s, 0.36 * s, ember, 0.1 * s, 0.62 * s, 0.22 * s, 0, 0, 0.3);
+    cone(head, 0.16 * s, 0.36 * s, ember, 0.1 * s, 0.62 * s, -0.22 * s, 0, 0, -0.3);
   }
 
   if (kind === 'torchbearer') {
