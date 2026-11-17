@@ -112,14 +112,21 @@ const CAMERA_PRESETS = {
   // The round-2 experiment (eagle A [15,38,52]->[-5,0,0]) FAILED capture
   // verification: the Titan's BODY is cut at the right frame edge and the
   // bottom-right popup clips, for only +4px on the defenders (Thom 33->37).
-  // The titan-hunt's point test said A keeps the Titan, but it tests only
-  // the Titan's CENTER — the 12.8u body extends past the frustum edge.
   // The hunt proves no tighter preset keeps the whole Titan in frame at
   // the first x8 moment (D/E/F/G/H/I all fail the center test; F only at
   // later moments with fewer enemies). So B stays: Titan fully in frame
   // (~160px), 16 enemies, Thom ~33px — and the defenders read via the
   // celebrate pose (arms up, chainMul>=4), not via the camera.
-  action: { pos: [22, 42, 58], target: [2, 0, 0] },
+  //
+  // R3E (Mark 23:58 WIB, "kurang rame + karakter nembak ga keliatan"):
+  // camera probe r3e-cam-probe.cjs froze the SAME x8 state from 5 presets
+  // and I viewed them all. F [17,36,50] and N1 [10,32,50] cut the Titan's
+  // body at the right edge (center in frame, body not — same failure as
+  // eagle A). N2 [26,34,46] reads crowded (Titan huge, pack big) but loses
+  // the wall entirely and the CHAIN chip collides with a +400 popup.
+  // N3 [19,39,54]->[0,0,0] wins: Titan fully in frame (~180px), same 11
+  // enemies in frame as B, wall + defenders slightly bigger. N3 it is.
+  action: { pos: [19, 39, 54], target: [0, 0, 0] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
 };
@@ -372,12 +379,18 @@ export class Renderer {
     // caught in a frozen frame — a 0.15s flash is visible in only ~10% of
     // frames, a 0.35s one in ~25% per defender, and with the staggered
     // volleys some defender is flashing in most frames.
+    // R3E (Mark 23:58 WIB): ttl 0.35s -> 0.9s + bigger + slower fade.
+    // At the x8 freeze the defenders fired 0.4-1.4s ago, so a 0.35s flash
+    // had already expired on ALL of them — the wall never showed a shot.
+    // 0.9s + slow fade keeps the most recent volley visible in the frozen
+    // frame (Thom 0.4s: bright; older ones fade out). 8 slots still enough:
+    // at most ~4-5 concurrent flashes (4 defenders x 1.4s cycle).
     this.muzzles = [];
     for (let i = 0; i < 8; i += 1) {
       const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       m.visible = false;
       this.scene.add(m);
-      this.muzzles.push({ sprite: m, t: 99, ttl: 0.35, born: 0, x: 0, z: 0 });
+      this.muzzles.push({ sprite: m, t: 99, ttl: 0.9, born: 0, x: 0, z: 0 });
     }
 
     // ROUND 3 AGENT A (items 1+3): defender shot tracers — bright glowing
@@ -386,11 +399,13 @@ export class Renderer {
     // one per live sim shot (max 32: 4 defenders x 3 shots x ~2.5
     // volleys in flight at once). Assigned by index each frame; the sim
     // owns the positions, the renderer only draws them.
+    // R3E: 2.0u -> 2.5u — the bolts read as a firing line, not dots.
+    // (2.0u was ~26px at eagle distance; 2.5u is ~32px.)
     this.tracers = [];
     for (let i = 0; i < 32; i += 1) {
       const tr = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd23f, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
       tr.visible = false;
-      tr.scale.setScalar(2.0);
+      tr.scale.setScalar(2.5);
       this.scene.add(tr);
       this.tracers.push(tr);
     }
@@ -668,7 +683,7 @@ export class Renderer {
       if (slot.t > slot.ttl) {
         slot.born = (typeof evTime === 'number' ? evTime : this.time);
         slot.t = this.time - slot.born;
-        slot.ttl = 0.35;
+        slot.ttl = 0.9;
         slot.x = x;
         slot.z = z;
         slot.sprite.visible = true;
@@ -687,8 +702,10 @@ export class Renderer {
       const f = Math.min(1, slot.t / slot.ttl);
       const y = wallTopY(slot.z) + 2.2;
       slot.sprite.position.set(slot.x, y, slot.z);
-      slot.sprite.scale.setScalar(3.0 * (1 - f * 0.4));
-      slot.sprite.material.opacity = 0.9 * (1 - f);
+      // R3E: 4.5u + slow fade (was 3.0u, opacity 0.9*(1-f)) — the flash must
+      // survive as a VISIBLE gold burst at the wall in a frozen frame.
+      slot.sprite.scale.setScalar(4.5 * (1 - f * 0.3));
+      slot.sprite.material.opacity = 0.9 * (1 - f * 0.6);
     }
   }
 

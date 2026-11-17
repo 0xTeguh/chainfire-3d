@@ -30,10 +30,14 @@ const SCALES = {
   ironhide: 2.0,
   saboteur: 0.75,
   titan: 4.0,
-  wren: 1.0,
-  pip: 0.55,
-  thom: 1.05,
-  mira: 0.95
+  // R3E (Mark 23:58 WIB): defenders read 1.3x — at eagle distance the
+  // Garrison was 29-33px and invisible as shooters; 1.3x puts Thom ~46px
+  // in the action frame. Visual only (sim uses positions, not scale).
+  // Cinderling/enemies UNTOUCHED (Mark's freeze).
+  wren: 1.3,
+  pip: 0.72,
+  thom: 1.37,
+  mira: 1.24
 };
 
 // ---------------------------------------------------------------------------
