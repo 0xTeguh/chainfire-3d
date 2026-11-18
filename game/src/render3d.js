@@ -1408,6 +1408,14 @@ export class Renderer {
       }
     }
     if (!best) { label.sprite.visible = false; return; }
+    // ROUND 8B: the SQUAD tag is a world-space sprite (depthTest false),
+    // updated every frame regardless of camera preset. After the r8a move
+    // (cx-26, y+7.0) it reads whole in the action frame but leaks ~15px
+    // into the title frame's right edge (title 6e55bf75 vs b471912a, diff
+    // bbox x 1263-1280 y 495-545). No position fixes both: the action and
+    // title x-windows do not overlap. Hide it under the title preset
+    // only — visibility gate, no position/sim change.
+    if (this.preset === 'title') { label.sprite.visible = false; return; }
     const y = terrainHeight(best.cx, best.cz);
     const text = `SQUAD ×${best.n}`;
     if (text !== this._squadLabelText) {
