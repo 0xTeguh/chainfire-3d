@@ -194,10 +194,15 @@
   .event-banner { position: absolute; top: 38vh; left: 50%; transform: translateX(-50%); font-size: 56px; font-weight: 900; letter-spacing: 3px; color: #ffd23f; text-shadow: 0 0 18px rgba(255, 140, 30, 0.8), 0 3px 0 #7a4a00, 0 2px 8px rgba(0,0,0,0.8); white-space: nowrap; pointer-events: none; z-index: 7; }
   /* ROUND 6 AGENT C (P1): giant event word at the x8 peak — PEONY SKY's
      FULL BLOOM! technique, the 320px carrier. Sits in the open lower-mid
-     field (64vh), clear of the CHAIN x8! banner (38vh), VOLLEY! / SQUAD
+     field (70vh since R7A), clear of the CHAIN x8! banner (38vh), VOLLEY! / SQUAD
      labels, the Titan (~91% across) and the defenders' beams (upper
      left). Same 3s window as the CHAIN x8! banner (ui.js). */
-  .event-word { position: absolute; top: 64vh; left: 50%; transform: translateX(-50%); font-size: 96px; font-weight: 900; letter-spacing: 4px; color: #ff5a1f; text-shadow: 0 0 24px rgba(255, 90, 20, 0.75), 0 4px 0 #5a1a00, 0 3px 10px rgba(0,0,0,0.85); white-space: nowrap; pointer-events: none; z-index: 7; }
+  /* ROUND 7 AGENT A: top 64vh -> 70vh — the R7A camera (target y 2 ->
+     6) shifts the whole scene ~50px down, which dropped the powder
+     trail behind the word; 70vh puts the word below the trail again
+     (trail clears its top edge) while keeping a gap to the WAVES strip.
+     Mobile rule (60vh, 40px) below is untouched. */
+  .event-word { position: absolute; top: 70vh; left: 50%; transform: translateX(-50%); font-size: 96px; font-weight: 900; letter-spacing: 4px; color: #ff5a1f; text-shadow: 0 0 24px rgba(255, 90, 20, 0.75), 0 4px 0 #5a1a00, 0 3px 10px rgba(0,0,0,0.85); white-space: nowrap; pointer-events: none; z-index: 7; }
   /* ROUND 3 AGENT D — title: how-to cards with diagrams (item 10) +
      THREAT → ANSWER roster (item 5). */
   .how-strip { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }

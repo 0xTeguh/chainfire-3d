@@ -226,7 +226,11 @@ const CAMERA_PRESETS = {
   // different freeze moment (Titan near the wall), which does not exist
   // under the x8 constraint. Item 1 is a modest win, item 2 a modest win,
   // item 3 a clear win.
-  action: { pos: [15, 22, 64], target: [0, 2, 4] },
+  // ROUND 7 AGENT A (item 1): target y 2 -> 6 — look slightly UP so the
+  // whole 3D scene sits ~50px lower in the frame: the Titan's head (face
+  // + crown) clears the bottom edge of the fixed THREAT QUEUE panel that
+  // covered it at target y 2. Sizes unchanged (same camera distance).
+  action: { pos: [15, 22, 64], target: [0, 6, 4] },
   draft: { pos: [10, 34, 52], target: [-16, 2, 0] },
   results: { pos: [6, 28, 54], target: [-22, 4, 0] }
 };
@@ -1349,7 +1353,11 @@ export class Renderer {
     if (!best) { label.sprite.visible = false; return; }
     // R6B fix (proof): +6.5u put the label ON TOP of the "CHAIN x8!"
     // DOM text. +10u lifts it clear of the banner and the top bars.
-    const y = terrainHeight(best.tx, best.tz) + 10;
+    // ROUND 7 AGENT A: +13u — the R7A camera (target y 2 -> 6) shifts
+    // the whole scene ~50px down, which dropped the label back behind
+    // the "CHAIN x8!" banner; +13u lifts it clear again (and clear of
+    // the +200 popup above it). Sprite only; sim untouched.
+    const y = terrainHeight(best.tx, best.tz) + 13;
     label.sprite.position.set(best.tx, y, best.tz);
     label.sprite.visible = true;
   }
@@ -1949,7 +1957,23 @@ export class Renderer {
       const damageState = frac <= 0.25 ? 2 : (frac <= 0.5 ? 1 : 0);
       this.bossMesh.group.visible = boss.alive || boss.defeated;
       this.bossMesh.group.position.set(boss.x, terrainHeight(boss.x, boss.z), boss.z);
-      this.bossMesh.group.rotation.y = 0; // models face -x by default
+      // ROUND 7 AGENT A (item 1, Mark 17:49 WIB): in the action shot the
+      // Titan faces the CAMERA. At the x8 freeze its face (-x, toward the
+      // fort) points ~105 deg away from the action camera, so the frame
+      // only ever saw its back/side — an orange pillar with no face, eyes
+      // or furnace ring. Yaw toward the camera preset, gated on
+      // preset === 'action' so live play (preset 'game') and the
+      // title/draft/results shots are untouched. Same aim formula as the
+      // defenders: yaw = atan2(dz, -dx) faces (dx, dz). Pure render-side:
+      // sim untouched, staged numbers unchanged, deterministic (boss pos +
+      // camera preset are both frozen).
+      let bossYaw = 0;
+      if (this.preset === 'action') {
+        const dx = this.camPos.x - boss.x;
+        const dz = this.camPos.z - boss.z;
+        bossYaw = Math.atan2(dz, -dx);
+      }
+      this.bossMesh.group.rotation.y = bossYaw; // models face -x by default
       this.bossMesh.setPose(boss.defeated ? 'dead' : (boss.state === 'attack' ? 'attack' : 'walk'), world.time, { damageState });
       // ROUND 6 AGENT C (P2): Titan halo + scorch path — only while the
       // Titan lives (wave-10 combat). Hidden on title/draft/results and
