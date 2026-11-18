@@ -655,7 +655,7 @@ export class Renderer {
     this._beamOuter.visible = false;
     this.scene.add(this._beamOuter);
     this._beamCoreGeo = makeRibbonGeo(BEAM_POOL);
-    this._beamCoreMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this._beamCoreMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     this._beamCore = new THREE.Mesh(this._beamCoreGeo, this._beamCoreMat);
     this._beamCore.frustumCulled = false;
     this._beamCore.renderOrder = 5;
@@ -1189,7 +1189,14 @@ export class Renderer {
       // Dark edge (0.55u, constant dark brown) under the gold.
       qe = this._writeRibbonQuad(this._beamEdgeGeo, qe, p0, p1, cam, 0.55, 0.14, 0.08, 0.04);
       qo = this._writeRibbonQuad(this._beamOuterGeo, qo, p0, p1, cam, 0.4 * fade, 0.9 * fade, 0.42 * fade, 0.06 * fade);
-      qc = this._writeRibbonQuad(this._beamCoreGeo, qc, p0, p1, cam, 0.18 * fade, 1.0 * fade, 0.68 * fade, 0.12 * fade);
+      // ROUND 7 AGENT B (item 2, live verifier): the core still washed to
+      // a THICK WHITE ribbon in the freeze dossier — additive core
+      // (0.95) + outer over the bright sky saturates to pale yellow-
+      // white. Core 0.18u -> 0.10u, opacity 0.95 -> 0.65, colour deeper
+      // gold (1.0, 0.60, 0.08): a thin hot line inside the gold outer
+      // glow, like the thin tracer that already reads. Outer/edge,
+      // muzzle glows and tracer orbs untouched — defenders still fire.
+      qc = this._writeRibbonQuad(this._beamCoreGeo, qc, p0, p1, cam, 0.10 * fade, 1.0 * fade, 0.60 * fade, 0.08 * fade);
     }
     this._beamEdgeGeo.setDrawRange(0, qe * 6);
     this._beamEdgeGeo.attributes.position.needsUpdate = true;
