@@ -291,7 +291,14 @@ export function buildTerrain(scene, rng) {
   // for a layered silhouette. Jitter uses a DEDICATED rng stream so the
   // main seeded layout (grass, flowers, clouds, birds) is unchanged.
   const peakRng = mulberry32(20261117 + 913);
-  const makeJaggedPeak = (radius, height, baseColor) => {
+  // ROUND 6 AGENT A (P7, Mark 15:11 WIB): mountains as LAYERED
+  // SILHOUETTES (PEONY SKY evidence) — a silhouette reads by its outline
+  // against the sky, not by internal facets, so the sunlit/shadow lerp is
+  // now RELATIVE to the base colour (light = base * 1.18, dark = base *
+  // 0.72) instead of the old strong green contrast (pale 0x9ab86a vs deep
+  // 0x16301f) that made each cone read as a flat pyramid. opts.snow adds
+  // a small pale cap at the leaned apex — snow ONLY on the highest peaks.
+  const makeJaggedPeak = (radius, height, baseColor, opts = {}) => {
     let geo = new THREE.ConeGeometry(radius, height, 7, 3);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i += 1) {
@@ -317,30 +324,51 @@ export function buildTerrain(scene, rng) {
     geo.computeVertexNormals();
     const nrm = geo.attributes.normal;
     const colors = new Float32Array(nrm.count * 3);
-    const light = new THREE.Color(baseColor).lerp(new THREE.Color(0x9ab86a), 0.45);
-    const dark = new THREE.Color(baseColor).lerp(new THREE.Color(0x16301f), 0.55);
+    const base = new THREE.Color(baseColor);
+    const light = base.clone().multiplyScalar(1.18);
+    const dark = base.clone().multiplyScalar(0.72);
     const tmp = new THREE.Color();
     for (let i = 0; i < nrm.count; i += 1) {
-      // Sun sits at -x: faces with a -x normal are sunlit (warm light),
-      // faces with a +x normal are shadowed (deep cool).
-      const f = Math.max(0, Math.min(1, 0.5 - nrm.getX(i) * 0.85));
+      // Sun sits at -x: faces with a -x normal are sunlit, faces with a
+      // +x normal are shadowed — but only mildly, so the range reads as
+      // one silhouette band, not as faceted pyramids.
+      const f = Math.max(0, Math.min(1, 0.5 - nrm.getX(i) * 0.55));
       tmp.copy(dark).lerp(light, f);
       colors[i * 3] = tmp.r;
       colors[i * 3 + 1] = tmp.g;
       colors[i * 3 + 2] = tmp.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+    if (opts.snow) {
+      // Small pale cap at the leaned apex: a snow triangle, not a white
+      // mountain. Cap radius ~22% of the peak radius, height ~28% of the
+      // peak height, pale blue-grey 0xd8dce6.
+      const capH = height * 0.28;
+      const cap = new THREE.Mesh(
+        new THREE.ConeGeometry(radius * 0.22, capH, 7),
+        new THREE.MeshStandardMaterial({ color: 0xd8dce6, roughness: 1, flatShading: true })
+      );
+      cap.position.set(leanX, height / 2 - capH / 2 + 0.3, leanZ);
+      mesh.add(cap);
+    }
+    return mesh;
   };
+  // ROUND 6 AGENT A (P7): three bands, darker + less saturated than the
+  // field so sky / mountain / field read as three bands — far ridge dark
+  // desaturated blue-grey against the orange sky, mid ridge grey-brown,
+  // near ridge warmer brown. Old colours were greens (0x3d7a52 /
+  // 0x356b4a / 0x2e5e4e) — same family as the field, so the range blended
+  // into it and read as flat pyramids.
   const hillLayers = [
-    { count: 7, dist: 78, size: [22, 10, 18], color: 0x3d7a52 },
-    { count: 6, dist: 100, size: [30, 16, 24], color: 0x356b4a },
-    { count: 5, dist: 128, size: [40, 22, 30], color: 0x2e5e4e }
+    { count: 7, dist: 78, size: [22, 10, 18], color: 0x6b4a33, near: true },
+    { count: 6, dist: 100, size: [30, 16, 24], color: 0x5a5048 },
+    { count: 5, dist: 128, size: [40, 22, 30], color: 0x46536a, snow: true }
   ];
   for (const layer of hillLayers) {
     for (let i = 0; i < layer.count; i += 1) {
       const angle = (i / layer.count) * Math.PI * 2 + range(rng, -0.2, 0.2);
-      const hill = makeJaggedPeak(layer.size[0], layer.size[1], layer.color);
+      const hill = makeJaggedPeak(layer.size[0], layer.size[1], layer.color, { snow: !!layer.snow });
       hill.position.set(Math.cos(angle) * layer.dist, layer.size[1] * 0.32, Math.sin(angle) * layer.dist);
       hill.scale.z = layer.size[2] / layer.size[0];
       hill.rotation.y = rng() * Math.PI;
@@ -353,6 +381,26 @@ export function buildTerrain(scene, rng) {
       sat.scale.z = layer.size[2] / layer.size[0];
       sat.rotation.y = rng() * Math.PI;
       group.add(sat);
+      // ROUND 6 AGENT A (P7): a few dark pine triangles at the foot of
+      // the NEAR ridge — the forest the analysis prescribes. Draws from
+      // peakRng (the dedicated mountain stream), never the main rng, so
+      // the seeded layout of everything after the mountains is unchanged.
+      if (layer.near) {
+        for (let p = 0; p < 2; p += 1) {
+          const pineH = 4.5 + peakRng() * 2.5;
+          const pine = new THREE.Mesh(
+            new THREE.ConeGeometry(1.3 + peakRng() * 0.7, pineH, 4),
+            new THREE.MeshStandardMaterial({ color: 0x1c2a1c, roughness: 1, flatShading: true })
+          );
+          pine.position.set(
+            hill.position.x + (peakRng() - 0.5) * layer.size[0] * 1.1,
+            pineH / 2 - 0.3,
+            hill.position.z + (peakRng() - 0.5) * layer.size[0] * 0.7
+          );
+          pine.rotation.y = peakRng() * Math.PI;
+          group.add(pine);
+        }
+      }
     }
   }
 
@@ -663,6 +711,14 @@ export function buildTerrain(scene, rng) {
         dummy.rotation.set(range(rng, -0.28, 0.28), rng() * Math.PI, range(rng, -0.28, 0.28));
         const w = 0.75 + 0.55 * hash01(ci, b);
         dummy.scale.set(w, range(rng, 0.45, 1.4), w);
+        // ROUND 6 AGENT A (P5, Mark 15:11 WIB): DELETE ALL pale tufts, no
+        // replacement — the bright-tipped spike clusters read as glare/noise
+        // mid-field, and no top-4 entry uses them. Bury all 600 blades
+        // (same technique as the wheat + dry grass burials: rng calls above
+        // preserved, sway bases stay valid, so the seeded layout of
+        // everything after is unchanged). The field keeps trees, rocks,
+        // prop clusters, the scorch band and ember flecks.
+        dummy.position.y = -100;
         dummy.updateMatrix();
         grass.setMatrixAt(gi, dummy.matrix);
         cTmp.setRGB(0.9 + rng() * 0.25, 0.95 + rng() * 0.25, 0.85 + rng() * 0.2);

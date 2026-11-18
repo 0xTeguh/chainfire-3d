@@ -235,13 +235,15 @@ export class Renderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    // ROUND 3 AGENT B (item 7, Rizal): the frame was washed out — exposure
-    // 1.15 + sun 2.6 + hemi 0.85 blew the field and sky pale. Dialled down
-    // ~20%: golden hour stays, glare goes.
-    this.renderer.toneMappingExposure = 0.95;
+    // ROUND 6 AGENT A (P4, Mark 15:11 WIB): darken the ground, deepen
+    // the sky — the field must stop being the brightest large area in the
+    // frame (action mean was 107.2; target ~85-90). Golden hour stays:
+    // the warmth is in the accents (sun, fort, trail, fire, Titan), not
+    // in the field. Exposure 0.95 -> 0.90, fog deeper.
+    this.renderer.toneMappingExposure = 0.90;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xdd9660, 95, 210);
+    this.scene.fog = new THREE.Fog(0xcf8a52, 95, 210);
 
     this.camera = new THREE.PerspectiveCamera(45, 1280 / 720, 0.1, 500);
     this.camPos = new THREE.Vector3(34, 30, 44);
@@ -813,12 +815,16 @@ export class Renderer {
       if (i < n - 1) { dx = pts[i + 1].x - pts[i].x; dz = pts[i + 1].z - pts[i].z; }
       else if (i > 0) { dx = pts[i].x - pts[i - 1].x; dz = pts[i].z - pts[i - 1].z; }
       const len = Math.hypot(dx, dz) || 1;
-      // ROUND 3 AGENT B (item 10, Rizal): the 0.3u ribbon is ~1px at 320px
-      // and vanishes in the thumbnail. Main ribbon 0.3u -> 0.44u, halo
-      // 1.6u -> 2.2u @ 0.6, bed 1.0u -> 1.5u — the burning trail must read
-      // as a thick high-contrast line at 320px.
-      const px = -dz / len * 0.22;
-      const pz = dx / len * 0.22;
+      // ROUND 6 AGENT A (P6, Mark 15:11 WIB): FAT high-contrast trail —
+      // the 0.44u ribbon was ~1px at 320px and invisible in the thumbnail
+      // (STITCHBOUND's fat red thread is the evidence: fat + high contrast
+      // reads as a curve at 320px). New stack, bottom to top: dark brown
+      // BED 4.4u wide (the contrast edge, opacity 0.8 so it reads as a
+      // dark outline against the tan road) → deep-orange GLOW halo 2.8u →
+      // bright core ribbon 1.1u (2.5x the old width). At 320px the whole
+      // band is ~10px: dark edge + orange glow + bright core.
+      const px = -dz / len * 0.55;
+      const pz = dx / len * 0.55;
       const y = terrainHeight(pts[i].x, pts[i].z) + 0.18;
       positions[i * 6] = pts[i].x + px;
       positions[i * 6 + 1] = y;
@@ -826,9 +832,9 @@ export class Renderer {
       positions[i * 6 + 3] = pts[i].x - px;
       positions[i * 6 + 4] = y;
       positions[i * 6 + 5] = pts[i].z - pz;
-      // Glow halo vertices: 2.2u wide (was 1.6u), 0.06u below the main ribbon.
-      const gx = -dz / len * 1.1;
-      const gz = dx / len * 1.1;
+      // Glow halo vertices: 2.8u wide (half-width 1.4), 0.06u below the main ribbon.
+      const gx = -dz / len * 1.4;
+      const gz = dx / len * 1.4;
       const gy = terrainHeight(pts[i].x, pts[i].z) + 0.12;
       glowPositions[i * 6] = pts[i].x + gx;
       glowPositions[i * 6 + 1] = gy;
@@ -841,9 +847,11 @@ export class Renderer {
         glowColors[(i * 2 + v) * 3 + 1] = colHalo.g;
         glowColors[(i * 2 + v) * 3 + 2] = colHalo.b;
       }
-      // Bed vertices: 1.5u wide (half-width 0.75, was 1.0u), 0.02u below the halo.
-      const bx = -dz / len * 0.75;
-      const bz = dx / len * 0.75;
+      // Bed vertices: 4.4u wide (half-width 2.2) — the WIDEST layer, so
+      // the dark brown edge shows outside the glow on both sides.
+      // 0.02u below the halo.
+      const bx = -dz / len * 2.2;
+      const bz = dx / len * 2.2;
       const by = terrainHeight(pts[i].x, pts[i].z) + 0.10;
       bedPositions[i * 6] = pts[i].x + bx;
       bedPositions[i * 6 + 1] = by;
@@ -899,10 +907,11 @@ export class Renderer {
     this.trailGlowGeo.setIndex(indices);
     this.trailGlowGeo.computeBoundingSphere();
     this.trailGlowMesh.visible = true;
-    // Bed mesh (dark powder bed under the glow).
+    // Bed mesh (dark powder bed under the glow — ROUND 6 P6: opacity 0.8
+    // so the 4.4u bed reads as a real dark edge, not a faint shadow).
     if (!this.trailBedGeo) {
       this.trailBedGeo = new THREE.BufferGeometry();
-      this.trailBedMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+      this.trailBedMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
       this.trailBedMesh = new THREE.Mesh(this.trailBedGeo, this.trailBedMat);
       this.trailBedMesh.frustumCulled = false;
       this.scene.add(this.trailBedMesh);
