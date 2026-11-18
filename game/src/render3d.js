@@ -41,6 +41,11 @@ const SMOKE_POOL = 12;
 // frame never fills with stale lightning.
 const BEAM_POOL = 32;
 const ARC_POOL = 16;
+// ROUND 6 AGENT B (P8, Mark items 5-6): one tracer/muzzle colour per
+// defender, matching the defender's own identity in models.js — Wren
+// navy+gold, Pip brown+orange, Thom grey+crimson, Mira teal+brass. The
+// four shots are countable by colour in the still.
+const DEFENDER_COLORS = { wren: 0xffd23c, pip: 0xff7a1a, thom: 0xff453a, mira: 0x2dd4bf };
 const ARC_SEGMENTS = 5;
 const ARC_TTL = 1.0; // 0.25 -> 0.5 -> 1.0, each step measured: at 0.25s AND
 // 0.5s exactly 1 arc was alive at the x8 freeze (the kill rate right at
@@ -433,7 +438,7 @@ export class Renderer {
       ring.rotation.x = -Math.PI / 2;
       ring.visible = false;
       this.scene.add(ring);
-      this.flashes.push({ flash, ring, t: 99, ttl: 0.5, x: 0, z: 0, maxR: 5 });
+      this.flashes.push({ flash, ring, t: 99, ttl: 0.5, x: 0, z: 0, maxR: 5, born: -1 });
     }
 
     // Smoke puffs (pooled): warm gray billboards, normal blending.
@@ -442,7 +447,7 @@ export class Renderer {
       const puff = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, transparent: true, opacity: 0, depthWrite: false }));
       puff.visible = false;
       this.scene.add(puff);
-      this.smokes.push({ puff, t: 99, ttl: 1.4, x: 0, z: 0, born: 0 });
+      this.smokes.push({ puff, t: 99, ttl: 1.4, x: 0, z: 0, born: -1 });
     }
 
     // ROUND 5 AGENT C (item #6): smoke columns on the fresh scorch — thin
@@ -535,12 +540,24 @@ export class Renderer {
     // 0.9s + slow fade keeps the most recent volley visible in the frozen
     // frame (Thom 0.4s: bright; older ones fade out). 8 slots still enough:
     // at most ~4-5 concurrent flashes (4 defenders x 1.4s cycle).
+    // ROUND 6 AGENT B (P8): ttl 0.9s -> 1.6s — the volley cycle is 1.4s
+    // and the freeze catches the four defenders at 0.43/1.07/1.37/1.38s
+    // (measured by probe at the titan freeze: thom 267.07, mira 266.43,
+    // wren 266.13, pip 266.12 vs world.time 267.5). 0.9s shows only Thom;
+    // 1.6s shows the WHOLE last volley, brightest first. born: -1 is the
+    // never-used sentinel for the born-relative reuse in _spawnMuzzle
+    // (same pattern as _spawnArc — see the batched-drain note there).
     this.muzzles = [];
     for (let i = 0; i < 8; i += 1) {
-      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+      // ROUND 6 AGENT B (P8): fireball texture, not the soft glow — the
+      // glow's additive gold washes out against the bright wall/sky, so
+      // the flash read as a faint smudge at the beam origin. The shaped
+      // fireball (deep gold core, orange mid, red-orange edge — the round-3
+      // blast texture) reads as a real burst at the defender.
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fireballTex, color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       m.visible = false;
       this.scene.add(m);
-      this.muzzles.push({ sprite: m, t: 99, ttl: 0.9, born: 0, x: 0, z: 0 });
+      this.muzzles.push({ sprite: m, t: 99, ttl: 1.6, born: -1, x: 0, z: 0, kind: null });
     }
 
     // ROUND 3 AGENT A (items 1+3): defender shot tracers — bright glowing
@@ -598,6 +615,27 @@ export class Renderer {
     this._beamCore.renderOrder = 5;
     this._beamCore.visible = false;
     this.scene.add(this._beamCore);
+
+    // ROUND 6 AGENT B (P3): dark edge under the beams — a normal-blending
+    // dark-brown ribbon, slightly wider than the gold, drawn first
+    // (renderOrder 4) so the warm beam reads as gold fire with an outline
+    // instead of glare. Additive blending cannot draw darkness, so this
+    // third layer is the only way to get a dark edge.
+    this._beamEdgeGeo = makeRibbonGeo(BEAM_POOL);
+    this._beamEdgeMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+    this._beamEdge = new THREE.Mesh(this._beamEdgeGeo, this._beamEdgeMat);
+    this._beamEdge.frustumCulled = false;
+    this._beamEdge.renderOrder = 4;
+    this._beamEdge.visible = false;
+    this.scene.add(this._beamEdge);
+
+    // ROUND 6 AGENT B (P8): VOLLEY! label + SQUAD cluster marker —
+    // canvas-text sprites on the popup pattern (256x64 canvas, depthTest
+    // false, renderOrder 10). Both are pure functions of the frozen world
+    // state, so a staged frame is byte-identical.
+    this._volleyLabel = this._makeLabelSprite('VOLLEY!', 0xffd23c, 11, 2.75);
+    this._squadLabel = this._makeLabelSprite('SQUAD ×4', 0xffd23c, 9, 2.25);
+    this._squadLabelText = 'SQUAD ×4';
 
     // ROUND 5 AGENT A (item #2): chain-lightning arcs — short jagged gold
     // ribbons between consecutive chain kills. One mesh, ARC_POOL slots x
@@ -938,7 +976,9 @@ export class Renderer {
         }
       } else if (ev.type === 'shoot') {
         // ROUND 3 (item 1): a defender fired — muzzle flash at the wall.
-        this._spawnMuzzle(ev.time, ev.x, ev.z);
+        // ROUND 6 AGENT B (P8): pass the defender kind so the flash takes
+        // that defender's colour.
+        this._spawnMuzzle(ev.time, ev.x, ev.z, ev.defender);
       } else if (ev.type === 'chain') {
         // ROUND 5 AGENT A (item #2): chain-lightning arc between
         // consecutive chain kills. Events drain in sim order, so the
@@ -1032,6 +1072,38 @@ export class Renderer {
     return q + 1;
   }
 
+  // ROUND 6 AGENT B (P8): canvas-text label sprite on the popup pattern
+  // (256x64 canvas, depthTest false, renderOrder 10, gold text with a
+  // dark stroke so it reads over the bright field).
+  _drawLabelText(canvas, tex, text, colorHex) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 64);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 34px Arial, sans-serif';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(20, 10, 5, 0.9)';
+    ctx.strokeText(text, 128, 32);
+    ctx.fillStyle = `#${colorHex.toString(16).padStart(6, '0')}`;
+    ctx.fillText(text, 128, 32);
+    tex.needsUpdate = true;
+  }
+
+  _makeLabelSprite(text, colorHex, w, h) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sprite.visible = false;
+    sprite.renderOrder = 10;
+    sprite.scale.set(w, h, 1);
+    this.scene.add(sprite);
+    this._drawLabelText(canvas, tex, text, colorHex);
+    return { sprite, canvas, tex, colorHex };
+  }
+
   // ROUND 5 AGENT A (item #1): beams — one ribbon per live defender shot,
   // muzzle -> target's current position. Fade = distance travelled: the
   // beam thins and dims as the shot nears its target (fade 1 -> 0.45).
@@ -1042,23 +1114,41 @@ export class Renderer {
     const cam = this.camera.position;
     let qo = 0;
     let qc = 0;
+    let qe = 0;
     for (let i = 0; i < n; i += 1) {
       const s = shots[i];
       const def = DEFENDER_DEFS.find((d) => d.kind === s.kind);
       const mz = def ? def.z : s.z;
       const p0 = { x: WORLD.WALL_X - 0.5, y: wallTopY(mz) + 2.2, z: mz };
-      const p1 = { x: s.tx, y: terrainHeight(s.tx, s.tz) + 1.5, z: s.tz };
+      // Fraction travelled (s.dist is distance REMAINING: 1 at fire, 0
+      // on arrival — verified against the probe: mira's bolt at dist 1.5
+      // of 50 sits at x 0.4, nearly on its target at tx 1.2).
       const frac = Math.max(0, Math.min(1, 1 - (s.dist !== undefined ? s.dist : 0) / (s.total || 1)));
-      const fade = 1 - frac * 0.55;
-      // ROUND 5 correction (deep top-5 analysis, 04:34 WIB): KINGFISHER
-      // #1 is BRIGHT DAYLIGHT and its white FAT water-drop cone proves a
-      // bright line CAN read on a bright field — the lesson is THICKNESS
-      // + CONTRAST, not darkness. So the beams are FAT: outer orange edge
-      // 0.8u + inner white-gold core 0.35u. Same colors/opacity as before
-      // (no brightness creep — washout is still forbidden, beacon lesson).
-      qo = this._writeRibbonQuad(this._beamOuterGeo, qo, p0, p1, cam, 0.8 * fade, 1.0 * fade, 0.54 * fade, 0.10 * fade);
-      qc = this._writeRibbonQuad(this._beamCoreGeo, qc, p0, p1, cam, 0.35 * fade, 1.0 * fade, 0.95 * fade, 0.75 * fade);
+      // ROUND 6 AGENT B (P3): the beam ends at the BOLT HEAD (the shot's
+      // current position, same y interpolation as the tracer), not at the
+      // target — it is the bolt's trail, so it reads as a short gold bolt
+      // instead of a frame-crossing white streak. At the freeze the three
+      // live Thom bolts are ~43% travelled, Mira's ~97%.
+      const y0 = wallTopY(mz) + 2.2;
+      const y1 = terrainHeight(s.tx, s.tz) + 1.5;
+      const p1 = { x: s.x, y: y0 + (y1 - y0) * frac, z: s.z };
+      // Fade = distance travelled: the beam dims toward the bolt head
+      // (fade 1 -> 0.3, was 1 -> 0.45) so the far end dissolves.
+      const fade = 1 - frac * 0.7;
+      // ROUND 6 (P3, Mark item 2, top-4 evidence): warm + thin + short.
+      // NO white core — deep gold core (1.0, 0.68, 0.12), orange edge
+      // (0.9, 0.42, 0.06), half widths halved (outer 0.8 -> 0.4, core
+      // 0.35 -> 0.18). The round-5 "fat so it reads on bright" logic is
+      // contradicted by the top 4: no top-4 entry uses a fat white beam.
+      // Dark edge (0.55u, constant dark brown) under the gold.
+      qe = this._writeRibbonQuad(this._beamEdgeGeo, qe, p0, p1, cam, 0.55, 0.14, 0.08, 0.04);
+      qo = this._writeRibbonQuad(this._beamOuterGeo, qo, p0, p1, cam, 0.4 * fade, 0.9 * fade, 0.42 * fade, 0.06 * fade);
+      qc = this._writeRibbonQuad(this._beamCoreGeo, qc, p0, p1, cam, 0.18 * fade, 1.0 * fade, 0.68 * fade, 0.12 * fade);
     }
+    this._beamEdgeGeo.setDrawRange(0, qe * 6);
+    this._beamEdgeGeo.attributes.position.needsUpdate = true;
+    this._beamEdgeGeo.attributes.color.needsUpdate = true;
+    this._beamEdge.visible = qe > 0;
     this._beamOuterGeo.setDrawRange(0, qo * 6);
     this._beamOuterGeo.attributes.position.needsUpdate = true;
     this._beamOuterGeo.attributes.color.needsUpdate = true;
@@ -1116,14 +1206,26 @@ export class Renderer {
     this._arcMesh.visible = q > 0;
   }
 
-  _spawnMuzzle(evTime, x, z) {
+  _spawnMuzzle(evTime, x, z, defenderKind) {
+    // ROUND 6 AGENT B (P8): born-relative reuse — the SAME batched-drain
+    // bug _spawnArc already documents. The old test (slot.t > slot.ttl)
+    // used a STALE slot.t during the drain: at the freeze the drain runs
+    // once, BEFORE _updateMuzzles, with slot.t left over from the title
+    // screen (~0.5s < 0.9s ttl) — so NO slot ever looked free and ZERO
+    // muzzle flashes spawned at the freeze (proven by probe: all 8 slots
+    // born=0, visible=false at world.time 267.5). Born-relative reuse
+    // keeps the last volley's flashes in their own slots, like arcs.
     for (const slot of this.muzzles) {
-      if (slot.t > slot.ttl) {
+      if (slot.born < 0 || (evTime - slot.born) > slot.ttl) {
         slot.born = (typeof evTime === 'number' ? evTime : this.time);
         slot.t = this.time - slot.born;
-        slot.ttl = 0.9;
+        slot.ttl = 1.6;
         slot.x = x;
         slot.z = z;
+        slot.kind = defenderKind || null;
+        if (defenderKind && DEFENDER_COLORS[defenderKind] !== undefined) {
+          slot.sprite.material.color.setHex(DEFENDER_COLORS[defenderKind]);
+        }
         slot.sprite.visible = true;
         return;
       }
@@ -1158,6 +1260,11 @@ export class Renderer {
         continue;
       }
       const s = shots[i];
+      // ROUND 6 AGENT B (P8): one tracer colour per defender, so the
+      // four shots are countable by colour (wren gold, pip orange, thom
+      // red, mira teal — DEFENDER_COLORS). Tracers are reassigned by
+      // index each frame, so the colour follows the shot's kind.
+      tr.material.color.setHex(DEFENDER_COLORS[s.kind] || 0xffd23f);
       // y interpolates from the muzzle (wall top + chest height) down to
       // the target's torso by the fraction travelled (the sim tracks
       // dist/total, so the arc is a pure function of sim state). Sprites
@@ -1171,6 +1278,90 @@ export class Renderer {
       tr.position.set(s.x, y, s.z);
       tr.visible = true;
     }
+  }
+
+  // ROUND 6 AGENT B (P8): VOLLEY! — when 2+ live shots converge on the
+  // same target (same targetId), the multi-shot moment gets a label above
+  // that target. Pure function of world.shots, so the staged frame is
+  // byte-identical. At the titan freeze Mira + Thom both target enemy 161
+  // (measured by probe), so the label shows at (1.2, 0.9). The ULTIMATE
+  // proof is still Rizal's playtest — this is supporting evidence in the
+  // still.
+  _updateVolleyLabel() {
+    const world = this.world;
+    const label = this._volleyLabel;
+    if (!label) return;
+    const shots = world && Array.isArray(world.shots) ? world.shots : [];
+    const byTarget = new Map();
+    for (const s of shots) {
+      const k = s.targetId;
+      if (k === undefined || k === null) continue;
+      const e = byTarget.get(k) || { n: 0, tx: s.tx, tz: s.tz };
+      e.n += 1;
+      byTarget.set(k, e);
+    }
+    let best = null;
+    for (const e of byTarget.values()) {
+      if (e.n >= 2 && (!best || e.n > best.n)) best = e;
+    }
+    if (!best) { label.sprite.visible = false; return; }
+    // R6B fix (proof): +6.5u put the label ON TOP of the "CHAIN x8!"
+    // DOM text. +10u lifts it clear of the banner and the top bars.
+    const y = terrainHeight(best.tx, best.tz) + 10;
+    label.sprite.position.set(best.tx, y, best.tz);
+    label.sprite.visible = true;
+  }
+
+  // ROUND 6 AGENT B (P8): SQUAD cluster marker — the densest group of
+  // 4-5 live enemies in one lane (the round-3 spawnGroup size) gets a
+  // "SQUAD ×n" tag. Pure function of world.enemies.
+  // At the titan freeze the tightest group is lane 0, ids 167-170, x
+  // 42.3-52.5 (10.2u spread, 6-16u from the gate at SPAWN_X 58.2).
+  // Groups spawn in the sim (spawnGroup, round 3) — this only MARKS
+  // them; no sim change. NOTE: a ground ring under the cluster was tried
+  // and REMOVED — from the action camera the cluster sits behind the
+  // Titan, so no ring colour/opacity read in the still; the tag alone is
+  // the marker.
+  _updateSquadMarker() {
+    const world = this.world;
+    const label = this._squadLabel;
+    if (!label) return;
+    const enemies = world && Array.isArray(world.enemies) ? world.enemies.filter((e) => !e.dead) : [];
+    const byLane = new Map();
+    for (const e of enemies) {
+      const list = byLane.get(e.lane) || [];
+      list.push(e);
+      byLane.set(e.lane, list);
+    }
+    let best = null;
+    for (const list of byLane.values()) {
+      list.sort((a, b) => a.x - b.x);
+      for (let i = 0; i < list.length; i += 1) {
+        for (let j = i + 3; j < Math.min(list.length, i + 5); j += 1) {
+          const spread = list[j].x - list[i].x;
+          if (spread > 12) break;
+          const n = j - i + 1;
+          if (n >= 4 && (!best || n > best.n || (n === best.n && spread < best.spread))) {
+            let cx = 0;
+            let cz = 0;
+            for (let k = i; k <= j; k += 1) { cx += list[k].x; cz += list[k].z; }
+            best = { n, spread, cx: cx / n, cz: cz / n };
+          }
+        }
+      }
+    }
+    if (!best) { label.sprite.visible = false; return; }
+    const y = terrainHeight(best.cx, best.cz);
+    const text = `SQUAD ×${best.n}`;
+    if (text !== this._squadLabelText) {
+      this._squadLabelText = text;
+      this._drawLabelText(label.canvas, label.tex, text, label.colorHex);
+    }
+    // R6B fix (proof): the tag at the centroid (x ~47, near the spawn
+    // gate) was HALF OFF the right frame edge. The tag sits 10u toward
+    // the wall so it reads fully in-frame.
+    label.sprite.position.set(best.cx - 10, y + 5.5, best.cz);
+    label.sprite.visible = true;
   }
 
   _burstCentroid(world) {
@@ -1189,8 +1380,13 @@ export class Renderer {
   }
 
   _spawnFlash(world, evTime, x, z) {
+    // ROUND 6 AGENT B (P8): born-relative reuse — same batched-drain bug
+    // as _spawnMuzzle/_spawnArc. The old test (slot.t > slot.ttl) made
+    // every boom in the drain overwrite slot 0 (this.time is the freeze
+    // time for every spawn, so a just-born slot always looked free) and
+    // only the LAST boom's fireball survived the freeze.
     for (const slot of this.flashes) {
-      if (slot.t > slot.ttl) {
+      if (slot.born < 0 || (evTime - slot.born) > slot.ttl) {
         // Birth in SIM time (the event carries world.time): the flash's
         // progress is then a pure function of world.time, so a frozen
         // staged frame renders identically no matter how many render
@@ -1222,7 +1418,10 @@ export class Renderer {
     const offs = [[-1.5, 0.5], [0.8, 1.0], [1.4, -0.9]];
     for (const [dx, dz] of offs) {
       for (const slot of this.smokes) {
-        if (slot.t > slot.ttl) {
+        // ROUND 6 AGENT B (P8): born-relative reuse — same batched-drain
+        // bug as _spawnFlash: the old stale-t test let every boom in the
+        // drain overwrite the same puff slots.
+        if (slot.born < 0 || (evTime - slot.born) > slot.ttl) {
           slot.born = (typeof evTime === 'number' ? evTime : this.time);
           slot.t = this.time - slot.born;
           slot.ttl = 1.4;
@@ -1990,6 +2189,10 @@ export class Renderer {
     // camera position for their side vectors.
     this._updateBeams();
     this._updateArcs();
+
+    // ROUND 6 AGENT B (P8): VOLLEY! label + SQUAD cluster marker.
+    this._updateVolleyLabel();
+    this._updateSquadMarker();
   }
 
   render() {
