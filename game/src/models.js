@@ -34,10 +34,16 @@ const SCALES = {
   // Garrison was 29-33px and invisible as shooters; 1.3x puts Thom ~46px
   // in the action frame. Visual only (sim uses positions, not scale).
   // Cinderling/enemies UNTOUCHED (Mark's freeze).
-  wren: 1.3,
-  pip: 0.72,
-  thom: 1.37,
-  mira: 1.24
+  // ROUND 7 AGENT C (item 4c, Mark 17:49 WIB): defenders still ~30px
+  // visible above the parapet at the x8 freeze — +15% on all four, so
+  // ~0.6u more body clears the parapet (Thom ~33px -> ~38px). Muzzle /
+  // tracer / beam origins are wallTopY + 2.2 (fixed), so the flashes
+  // stay at chest height on the taller bodies. Enemies untouched, no
+  // camera move (the 320px bar is Titan + ironhide only).
+  wren: 1.50,
+  pip: 0.83,
+  thom: 1.58,
+  mira: 1.43
 };
 
 // ---------------------------------------------------------------------------

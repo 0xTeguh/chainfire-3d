@@ -299,7 +299,15 @@ export function buildTerrain(scene, rng) {
   // 0x16301f) that made each cone read as a flat pyramid. opts.snow adds
   // a small pale cap at the leaned apex — snow ONLY on the highest peaks.
   const makeJaggedPeak = (radius, height, baseColor, opts = {}) => {
-    let geo = new THREE.ConeGeometry(radius, height, 7, 3);
+    // ROUND 7 AGENT C (item 4a, Mark 17:49 WIB): the FAR ridge still
+    // reads as smooth pyramids — the per-vertex jitter below is random
+    // per ring, so the silhouette stays a clean triangle. opts.ridge
+    // adds COHERENT angular ridges (radius varies with ANGLE only, the
+    // same at every height ring, so ridges run vertically from base to
+    // apex) + more radial segments (12 vs 7), far layer only.
+    const radial = opts.segments || 7;
+    const ridgePhase = opts.ridge ? peakRng() * Math.PI * 2 : 0;
+    let geo = new THREE.ConeGeometry(radius, height, radial, 3);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i += 1) {
       const y = pos.getY(i);
@@ -311,6 +319,15 @@ export function buildTerrain(scene, rng) {
         pos.setZ(i, pos.getZ(i) * j);
         // The apex ring stays coplanar (one point, not a ragged crown).
         if (!isApex) pos.setY(i, y + (peakRng() - 0.5) * height * 0.14);
+      }
+      // Coherent ridge/valley: skipped on base + apex (the apex is
+      // re-centred by the lean pass below, so any apex modulation would
+      // be overwritten anyway).
+      if (opts.ridge && !isBase && !isApex) {
+        const theta = Math.atan2(pos.getZ(i), pos.getX(i));
+        const r = 1 + 0.28 * Math.sin(3 * theta + ridgePhase) + 0.14 * Math.sin(7 * theta + ridgePhase * 1.7);
+        pos.setX(i, pos.getX(i) * r);
+        pos.setZ(i, pos.getZ(i) * r);
       }
     }
     // Apex leans off-centre as ONE point, so the silhouette is not a
@@ -344,9 +361,24 @@ export function buildTerrain(scene, rng) {
       // Small pale cap at the leaned apex: a snow triangle, not a white
       // mountain. Cap radius ~22% of the peak radius, height ~28% of the
       // peak height, pale blue-grey 0xd8dce6.
+      // R7C: when ridged, the cap gets the same angular modulation (its
+      // bright silhouette is what reads as "pyramid" at the summit).
       const capH = height * 0.28;
+      const capGeo = new THREE.ConeGeometry(radius * 0.22, capH, opts.ridge ? 12 : 7);
+      if (opts.ridge) {
+        const cp = capGeo.attributes.position;
+        for (let i = 0; i < cp.count; i += 1) {
+          const cy = cp.getY(i);
+          if (cy > capH / 2 - 0.01 || cy < -capH / 2 + 0.01) continue;
+          const theta = Math.atan2(cp.getZ(i), cp.getX(i));
+          const r = 1 + 0.28 * Math.sin(3 * theta + ridgePhase) + 0.14 * Math.sin(7 * theta + ridgePhase * 1.7);
+          cp.setX(i, cp.getX(i) * r);
+          cp.setZ(i, cp.getZ(i) * r);
+        }
+        capGeo.computeVertexNormals();
+      }
       const cap = new THREE.Mesh(
-        new THREE.ConeGeometry(radius * 0.22, capH, 7),
+        capGeo,
         new THREE.MeshStandardMaterial({ color: 0xd8dce6, roughness: 1, flatShading: true })
       );
       cap.position.set(leanX, height / 2 - capH / 2 + 0.3, leanZ);
@@ -363,19 +395,21 @@ export function buildTerrain(scene, rng) {
   const hillLayers = [
     { count: 7, dist: 78, size: [22, 10, 18], color: 0x6b4a33, near: true },
     { count: 6, dist: 100, size: [30, 16, 24], color: 0x5a5048 },
-    { count: 5, dist: 128, size: [40, 22, 30], color: 0x46536a, snow: true }
+    { count: 5, dist: 128, size: [40, 22, 30], color: 0x46536a, snow: true, far: true }
   ];
   for (const layer of hillLayers) {
     for (let i = 0; i < layer.count; i += 1) {
       const angle = (i / layer.count) * Math.PI * 2 + range(rng, -0.2, 0.2);
-      const hill = makeJaggedPeak(layer.size[0], layer.size[1], layer.color, { snow: !!layer.snow });
+      const hill = makeJaggedPeak(layer.size[0], layer.size[1], layer.color, { snow: !!layer.snow, segments: layer.far ? 12 : 7, ridge: !!layer.far });
       hill.position.set(Math.cos(angle) * layer.dist, layer.size[1] * 0.32, Math.sin(angle) * layer.dist);
       hill.scale.z = layer.size[2] / layer.size[0];
       hill.rotation.y = rng() * Math.PI;
       group.add(hill);
       // Satellite peak: smaller jagged sibling, offset along the ridge,
       // so each mountain reads as a layered mass, not one lone triangle.
-      const sat = makeJaggedPeak(layer.size[0] * 0.55, layer.size[1] * 0.6, layer.color);
+      // R7C: far-layer satellites get the same ridge treatment, so the
+      // far ridge does not stay smooth beside a ridged main peak.
+      const sat = makeJaggedPeak(layer.size[0] * 0.55, layer.size[1] * 0.6, layer.color, { segments: layer.far ? 12 : 7, ridge: !!layer.far });
       const sa = angle + 0.22;
       sat.position.set(Math.cos(sa) * (layer.dist + 6), layer.size[1] * 0.2, Math.sin(sa) * (layer.dist + 6));
       sat.scale.z = layer.size[2] / layer.size[0];
@@ -842,12 +876,34 @@ export function buildTerrain(scene, rng) {
   sky.name = 'sky';
   group.add(sky);
 
+  // ROUND 7 AGENT C (item 4b, Mark 17:49 WIB): the sun read as a FLAT
+  // DISC — one uniform amber fill with a hard circular edge, plus a
+  // hard-edged halo ring. A radial-gradient canvas texture (hot bright
+  // core -> deep amber rim) makes the disc read as a glowing sun, and a
+  // gradient halo fading to transparent removes the visible ring edge.
+  // No rng: pure canvas gradients, deterministic. Colours keep the R4B
+  // lesson (deep gold, never pale white-moon).
+  const makeRadialTexture = (stops) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    for (const [at, col] of stops) grad.addColorStop(at, col);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(8, 32),
     // R4B (E2): the disc rendered PALE (almost white-moon) against the
     // orange sky — 0xf5a623 is too light at full brightness. Deeper amber
     // 0xef9b12 so the sun reads GOLD, not white, in every backdrop.
-    new THREE.MeshBasicMaterial({ color: 0xef9b12, fog: false })
+    // R7C: gradient texture over the same deep-gold base — hot core,
+    // darker rim, so it reads as a sun, not a flat coin.
+    new THREE.MeshBasicMaterial({ map: makeRadialTexture([[0, '#fff6c8'], [0.35, '#ffd23f'], [0.7, '#ef9b12'], [1, '#d97b06']]), fog: false })
   );
   // P10 (Rizal fix): the disc was at +x (120, 26, -60) — ~70° off-axis
   // from the title/action/draft cameras (all look toward -x), so no shot
@@ -865,8 +921,11 @@ export function buildTerrain(scene, rng) {
   group.add(sun);
 
   const halo = new THREE.Mesh(
-    new THREE.CircleGeometry(13, 32),
-    new THREE.MeshBasicMaterial({ color: 0xf08c20, transparent: true, opacity: 0.3, fog: false })
+    // R7C (item 4b): gradient halo fading to transparent (was a flat
+    // 0.30 disc with a hard outer edge that read as a ring). Slightly
+    // larger (13 -> 15u) since the soft falloff can afford it.
+    new THREE.CircleGeometry(15, 32),
+    new THREE.MeshBasicMaterial({ map: makeRadialTexture([[0, 'rgba(255,180,60,0.5)'], [0.5, 'rgba(240,140,32,0.25)'], [1, 'rgba(240,140,32,0)']]), transparent: true, fog: false })
   );
   halo.position.set(-40, 18, -130.5);
   halo.lookAt(0, 6, 0);
