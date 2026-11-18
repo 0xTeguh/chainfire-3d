@@ -1417,7 +1417,17 @@ export class Renderer {
     // R6B fix (proof): the tag at the centroid (x ~47, near the spawn
     // gate) was HALF OFF the right frame edge. The tag sits 10u toward
     // the wall so it reads fully in-frame.
-    label.sprite.position.set(best.cx - 10, y + 5.5, best.cz);
+    // ROUND 8 AGENT A: the tag at cx-10 sat dead-centre on the Titan's
+    // furnace ring (plate bbox ~1093-1173 x 355-397 vs ring left edge
+    // ~1043, measured on 2-action.jpg at 87dc9be) — the ring's centre
+    // was covered in the 2x Titan crop. Move it 16u further toward the
+    // wall (cx-26, expected screen centre ~990) and 1.5u up (y+7.0,
+    // expected ~336) so it clears the ring's left edge AND the Titan's
+    // shoulder (x >= 1033 at that height) AND the "+400 x4 CHAIN"
+    // popup below (~y 385). It lands over the hillside pines left of
+    // the Titan, still at the cluster's height, still the squad marker.
+    // Sprite only; sim untouched.
+    label.sprite.position.set(best.cx - 26, y + 7.0, best.cz);
     label.sprite.visible = true;
   }
 
