@@ -469,8 +469,8 @@ export function buildCharacter(kind, opts = {}) {
     const iron = std(0x7a5238, { rough: 0.6, metal: 0.15 });
     const ironDark = std(0x54382a, { rough: 0.75, metal: 0.15 });
     const brass = std(0xc9a227, { rough: 0.45, metal: 0.6 });
-    const emberMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 2.6 });
-    coreMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.2, rough: 0.4 });
+    const emberMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.0 });
+    coreMat = std(0xff7a1a, { emissive: 0xff5a00, ei: 3.8, rough: 0.4 });
 
     legL = piv(0, 1.0 * s, 0.55 * s);
     cyl(legL, 0.4 * s, 0.44 * s, 0.9 * s, iron, 0, -0.5 * s, 0);
@@ -485,11 +485,13 @@ export function buildCharacter(kind, opts = {}) {
     // Furnace core: glowing circle on the chest front (-x) + brass ring.
     // R5B: bigger (0.34s -> 0.44s) + hotter (flicker base 2.2 -> 3.2) so
     // the furnace reads at 320px, not just at close-up.
+    // ROUND 6 AGENT C (P2): hotter still (3.2 -> 3.8) — the Titan's rim /
+    // ember must read against the darkened field at 320px.
     const core = mesh(inner, new THREE.CircleGeometry(0.44 * s, 20), coreMat, -0.67 * s, 1.8 * s, 0);
     core.rotation.y = -Math.PI / 2;
     const ring = mesh(inner, new THREE.TorusGeometry(0.48 * s, 0.07 * s, 8, 24), brass, -0.67 * s, 1.8 * s, 0);
     ring.rotation.y = Math.PI / 2;
-    flicker.push({ obj: core, kind: 'emissive', mat: coreMat, base: 3.2, amp: 0.25, speed: 5, phase: rng() * 6 });
+    flicker.push({ obj: core, kind: 'emissive', mat: coreMat, base: 3.8, amp: 0.25, speed: 5, phase: rng() * 6 });
     parts.core = core;
     // Damage cracks (hidden until damageState >= 1).
     const crackMat = std(0x0d0d0d, { rough: 1 });

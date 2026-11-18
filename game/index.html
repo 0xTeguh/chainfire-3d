@@ -145,13 +145,19 @@
   .chain-progress { width: 100%; height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden; }
   .chain-progress-fill { height: 100%; background: #ffb347; width: 0%; }
   .chain-progress-fill.chain-progress-max { background: #ffd23f; box-shadow: 0 0 6px #ffd23f; }
-  .boss-bar { width: 170px; background: rgba(40, 10, 8, 0.82); border: 1px solid rgba(255, 93, 38, 0.7); border-radius: 6px; padding: 3px 6px; color: #f5e6c8; }
-  .boss-name { font-size: 11px; font-weight: 900; letter-spacing: 0.5px; color: #ffb347; }
-  .boss-phase { color: #ff7a1a; font-size: 10px; font-weight: bold; white-space: nowrap; }
-  .boss-bar-row { display: flex; align-items: center; gap: 5px; margin-top: 2px; }
-  .boss-bar-track { flex: 1; height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
-  .boss-bar-fill { height: 100%; background: #ff4d3d; width: 100%; }
-  .boss-hp { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  /* ROUND 6 AGENT C (P2): Titan nameplate, enlarged + high-contrast —
+     dark plate, bright ember bar. The Titan reads where it stands
+     (~91% across); the plate is the eye's anchor to it. Width 195px:
+     the top bar's measured budget at 1280px is 1260 (left 390 + mid +
+     right 648 + gaps 16) — 230px wrapped GRADE S + FUSE to a second
+     row, 195px keeps the bar on one row with 11px slack. */
+  .boss-bar { width: 195px; background: rgba(24, 6, 4, 0.92); border: 2px solid rgba(255, 120, 40, 0.95); border-radius: 6px; padding: 4px 8px; color: #f5e6c8; }
+  .boss-name { font-size: 14px; font-weight: 900; letter-spacing: 0.5px; color: #ffb347; }
+  .boss-phase { color: #ff7a1a; font-size: 11px; font-weight: bold; white-space: nowrap; }
+  .boss-bar-row { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+  .boss-bar-track { flex: 1; height: 12px; background: rgba(0, 0, 0, 0.55); border-radius: 6px; overflow: hidden; }
+  .boss-bar-fill { height: 100%; background: linear-gradient(90deg, #ff6a00, #ff2d1a); width: 100%; }
+  .boss-hp { font-size: 12px; font-weight: bold; white-space: nowrap; }
   /* ROUND 3 AGENT D — threat-queue panel (item 4) + event banner (item 1).
      Both live inside #hud, so they only show in play mode. The panel sits
      top-right below the HUD. ROUND 4 AGENT C (item 5) compacted it and
@@ -186,6 +192,12 @@
   .threat-vals { font-weight: bold; }
   .threat-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 2px; }
   .event-banner { position: absolute; top: 38vh; left: 50%; transform: translateX(-50%); font-size: 56px; font-weight: 900; letter-spacing: 3px; color: #ffd23f; text-shadow: 0 0 18px rgba(255, 140, 30, 0.8), 0 3px 0 #7a4a00, 0 2px 8px rgba(0,0,0,0.8); white-space: nowrap; pointer-events: none; z-index: 7; }
+  /* ROUND 6 AGENT C (P1): giant event word at the x8 peak — PEONY SKY's
+     FULL BLOOM! technique, the 320px carrier. Sits in the open lower-mid
+     field (64vh), clear of the CHAIN x8! banner (38vh), VOLLEY! / SQUAD
+     labels, the Titan (~91% across) and the defenders' beams (upper
+     left). Same 3s window as the CHAIN x8! banner (ui.js). */
+  .event-word { position: absolute; top: 64vh; left: 50%; transform: translateX(-50%); font-size: 96px; font-weight: 900; letter-spacing: 4px; color: #ff5a1f; text-shadow: 0 0 24px rgba(255, 90, 20, 0.75), 0 4px 0 #5a1a00, 0 3px 10px rgba(0,0,0,0.85); white-space: nowrap; pointer-events: none; z-index: 7; }
   /* ROUND 3 AGENT D — title: how-to cards with diagrams (item 10) +
      THREAT → ANSWER roster (item 5). */
   .how-strip { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
@@ -209,6 +221,18 @@
   .coming-next-title { color: #ffc53d; font-weight: 900; letter-spacing: 0.5px; }
   .coming-next-chip { display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,197,61,0.35); border-radius: 20px; padding: 3px 10px; font-weight: bold; color: #f5e6c8; }
   .coming-next-boss { border-color: #e85d26; color: #ffb347; }
+  /* ROUND 6 AGENT C (P10): 10-wave journey strip on the draft screen —
+     the action shot's WAVES strip language (numbered segments: done
+     green, current gold, wave 10 marked boss). Closes the
+     GLASSWRIGHT/PEONY road-map gap. */
+  .draft-journey { display: flex; gap: 3px; align-items: center; justify-content: center; margin-top: 12px; background: rgba(20, 16, 10, 0.82); border: 1px solid rgba(255, 197, 61, 0.5); border-radius: 8px; padding: 4px 6px; }
+  .wave-seg-boss { border: 2px solid #e85d26; color: #ffb347; }
+  /* ROUND 6 AGENT C (P9): visible audio pulse on the SOUND button — a ♪
+     badge that pulses (driven by frozen world.time in ui.js, so the
+     staged shot is deterministic) while the fuse is burning and sound is
+     on. Supporting evidence only; the real proof is Rizal's playtest. */
+  .ctl-btn { position: relative; }
+  .sound-note { position: absolute; top: -10px; right: -8px; width: 20px; height: 20px; border-radius: 50%; background: #ffc53d; color: #1a120c; font-size: 13px; font-weight: 900; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(255, 197, 61, 0.9); pointer-events: none; }
   /* ROUND 3 AGENT D — results: golden-hour gradient backdrop + NEW BEST
      badge (item 8). */
   .results-wrap { background: linear-gradient(160deg, rgba(74, 38, 10, 0.82), rgba(46, 22, 52, 0.78)); }
@@ -229,6 +253,8 @@
        the bar on a phone; they return at desktop widths. */
     .minimap-wrap, .wave-strip { display: none; }
     .event-banner { font-size: 28px; letter-spacing: 1px; }
+    /* ROUND 6 AGENT C (P1): the event word stays in-frame on a phone. */
+    .event-word { font-size: 40px; letter-spacing: 2px; top: 60vh; }
     .boss-bar { width: 140px; }
   }
   /* Results panel compaction (must fit 720px viewport; was 918px tall):

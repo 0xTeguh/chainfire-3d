@@ -158,6 +158,12 @@ export class UI {
     this.eventBanner = el('div', 'event-banner', '');
     this.eventBanner.style.display = 'none';
     hud.append(this.eventBanner);
+    // ROUND 6 AGENT C (P1): giant event word at the x8 peak ("CHAINFIRE!").
+    // Shown in the same 3s window as the CHAIN x8! banner (see
+    // updateEventBanner). Also inside #hud, so play mode only.
+    this.eventWord = el('div', 'event-word', 'CHAINFIRE!');
+    this.eventWord.style.display = 'none';
+    hud.append(this.eventWord);
   }
 
   _buildBottom() {
@@ -186,7 +192,17 @@ export class UI {
     const ctl = el('div', 'ctl-box');
     this.pauseBtn = el('button', 'ctl-btn', 'PAUSE (P)');
     this.pauseBtn.addEventListener('click', () => this.cb.onPause());
-    this.muteBtn = el('button', 'ctl-btn', 'SOUND ON (M)');
+    // ROUND 6 AGENT C (P9): the SOUND button carries its label in a span
+    // (so setMuted never wipes the ♪ badge) + a ♪ badge that pulses while
+    // audio is live (driven by frozen world.time in update() — the staged
+    // shot stays deterministic). Badge is supporting evidence only; the
+    // real proof is Rizal hearing the fuse hiss + chain blasts on his phone.
+    this._muted = false;
+    this.muteBtn = el('button', 'ctl-btn');
+    this.muteLabel = el('span', '', 'SOUND ON (M)');
+    this.muteNote = el('span', 'sound-note', '♪');
+    this.muteNote.style.display = 'none';
+    this.muteBtn.append(this.muteLabel, this.muteNote);
     this.muteBtn.addEventListener('click', () => this.cb.onMute());
     this.helpBtn = el('button', 'ctl-btn', 'HELP (H)');
     this.helpBtn.addEventListener('click', () => this.cb.onHelp());
@@ -310,6 +326,20 @@ export class UI {
     this.lightBtn.classList.toggle('light-ready', !!(world.trail && world.trail.state === 'armed'));
     this.lightBtn.disabled = !(world.trail && world.trail.state === 'armed');
     this.pauseBtn.textContent = paused ? 'RESUME (P)' : 'PAUSE (P)';
+    // ROUND 6 AGENT C (P9): visible audio pulse on the SOUND button.
+    // The ♪ badge shows + pulses while the fuse is burning and sound is
+    // on. Pulse is a pure function of frozen world.time, so the staged
+    // shot is byte-identical across runs. Supporting evidence only — the
+    // real proof is Rizal hearing the fuse hiss + chain blasts on his phone.
+    const audioLive = !this._muted && !!(world.trail && world.trail.state === 'burning');
+    if (audioLive) {
+      const p = Math.sin(world.time * 5);
+      this.muteNote.style.display = '';
+      this.muteNote.style.opacity = (0.7 + 0.3 * p).toFixed(3);
+      this.muteNote.style.transform = `scale(${(1 + 0.18 * p).toFixed(3)})`;
+    } else {
+      this.muteNote.style.display = 'none';
+    }
     // ROUND 4 AGENT C (item 14): the selected powder reads as a choice —
     // filled button + a ✓ on the label (the fill alone was easy to miss
     // against the bright world).
@@ -503,6 +533,11 @@ export class UI {
     } else {
       this.eventBanner.style.display = 'none';
     }
+    // ROUND 6 AGENT C (P1): the giant event word rides the CHAIN x8!
+    // banner — same 3s window, same freeze moment. It is a second 320px
+    // carrier next to "CHAIN x8!", not a replacement for it.
+    const showWord = !!(this._banner && this._banner.text === 'CHAIN x8!' && world.time - this._banner.born < 3);
+    this.eventWord.style.display = showWord ? '' : 'none';
   }
 
   bark(kind, seed) {
@@ -678,6 +713,20 @@ export class UI {
     wrap.append(actions);
     const build = el('div', 'build-so-far', `BUILD SO FAR: ${world.pickedCards.length > 0 ? world.pickedCards.map((id) => (CARD_DEFS.find((c) => c.id === id) || {}).name).join(' · ') : '—'} · ${9 - world.pickedCards.length} picks left`);
     wrap.append(build);
+    // ROUND 6 AGENT C (P10): 10-wave journey strip — the run's road at a
+    // glance, reusing the action shot's WAVES strip language (numbered
+    // segments: done green, current gold, wave 10 marked boss). A pure
+    // function of world.wave, so the staged draft shot is deterministic.
+    const journey = el('div', 'draft-journey');
+    journey.append(el('span', 'wave-strip-label', 'JOURNEY'));
+    for (let i = 1; i <= 10; i += 1) {
+      const cls = ['wave-seg'];
+      if (i < world.wave) cls.push('done');
+      if (i === world.wave) cls.push('current');
+      if (i === 10) cls.push('wave-seg-boss');
+      journey.append(el('div', cls.join(' '), String(i)));
+    }
+    wrap.append(journey);
     screen.append(wrap);
   }
 
@@ -822,6 +871,9 @@ export class UI {
   }
 
   setMuted(muted) {
-    this.muteBtn.textContent = muted ? 'SOUND OFF (M)' : 'SOUND ON (M)';
+    // ROUND 6 AGENT C (P9): label lives in its own span so this never
+    // wipes the ♪ badge; _muted drives the badge in update().
+    this._muted = !!muted;
+    if (this.muteLabel) this.muteLabel.textContent = muted ? 'SOUND OFF (M)' : 'SOUND ON (M)';
   }
 }

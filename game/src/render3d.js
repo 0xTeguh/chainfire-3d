@@ -499,6 +499,48 @@ export class Renderer {
     this.scorchedKegs = new Set();
     this.scorchedWall = new Set();
 
+    // ROUND 6 AGENT C (P2): Titan halo + scorch path. The Titan reads
+    // where it stands (~91% across, render-side only — the round-5
+    // titan-hunt proved moving it breaks the staged numbers). A warm
+    // additive halo around the Titan + a dark scorch scar on the ground
+    // from the fort wall to the Titan's feet, leading the eye to it.
+    // Halo is GOLD (0xffb040), not orange: gold reads against the
+    // Titan's orange iron; orange-on-orange washed out (first proof).
+    // The Titan's lane at the freeze is z=0 (probe: boss at (33, 0));
+    // the powder trail runs at z=14.5, so the two never merge. Both are
+    // gated on boss.alive in the boss update block — hidden on
+    // title/draft/results. Static geometry, no rng, no clock.
+    this._titanGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffb040, transparent: true, opacity: 0.65, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this._titanGlow.scale.set(16, 16, 1);
+    this._titanGlow.visible = false;
+    this.scene.add(this._titanGlow);
+    this._titanScorch = new THREE.Group();
+    {
+      const pathGeo = new THREE.CircleGeometry(1, 20);
+      const pathMat = new THREE.MeshBasicMaterial({ color: 0x241610, transparent: true, opacity: 0.5, depthWrite: false });
+      for (let i = 0; i < 16; i += 1) {
+        const x = -40 + (73 * i) / 15;
+        const d = new THREE.Mesh(pathGeo, pathMat);
+        d.rotation.x = -Math.PI / 2;
+        d.scale.set(2.4, 2.4, 1);
+        d.position.set(x, terrainHeight(x, 0) + 0.06, 0);
+        this._titanScorch.add(d);
+      }
+      const fleckGeo = new THREE.CircleGeometry(1, 12);
+      const fleckMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending });
+      for (let i = 0; i < 8; i += 1) {
+        const x = -36 + i * 9;
+        const fz = i % 2 ? 1.3 : -1.3;
+        const f = new THREE.Mesh(fleckGeo, fleckMat);
+        f.rotation.x = -Math.PI / 2;
+        f.scale.set(0.5, 0.5, 1);
+        f.position.set(x, terrainHeight(x, fz) + 0.08, fz);
+        this._titanScorch.add(f);
+      }
+    }
+    this._titanScorch.visible = false;
+    this.scene.add(this._titanScorch);
+
     // Sim particles -> instanced spheres.
     this.particleMesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.16, 6, 5),
@@ -1909,8 +1951,16 @@ export class Renderer {
       this.bossMesh.group.position.set(boss.x, terrainHeight(boss.x, boss.z), boss.z);
       this.bossMesh.group.rotation.y = 0; // models face -x by default
       this.bossMesh.setPose(boss.defeated ? 'dead' : (boss.state === 'attack' ? 'attack' : 'walk'), world.time, { damageState });
+      // ROUND 6 AGENT C (P2): Titan halo + scorch path — only while the
+      // Titan lives (wave-10 combat). Hidden on title/draft/results and
+      // after the win, so only the action shot changes.
+      this._titanGlow.visible = !!boss.alive;
+      if (boss.alive) this._titanGlow.position.set(boss.x - 0.8, terrainHeight(boss.x, boss.z) + 5.5, boss.z);
+      this._titanScorch.visible = !!boss.alive;
     } else if (this.bossMesh) {
       this.bossMesh.group.visible = false;
+      this._titanGlow.visible = false;
+      this._titanScorch.visible = false;
     }
     // Defenders on the wall.
     const phase = world.phase;
